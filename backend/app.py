@@ -577,6 +577,42 @@ async def buscar_bing(client, q: str) -> list:
              "origem": "Bing"} for e in d.entries[:10]]
 
 
+async def buscar_agencias_direto(client, q: str) -> list:
+    """Busca interna dos sites das agências (gratuita e independente dos buscadores)."""
+    qq = quote(q)
+    feeds = [("Boatos.org", f"https://www.boatos.org/?s={qq}&feed=rss2"),
+             ("Projeto Comprova", f"https://projetocomprova.com.br/?s={qq}&feed=rss2"),
+             ("E-farsas", f"https://www.e-farsas.com/?s={qq}&feed=rss2")]
+
+    async def feed(nome, url):
+        try:
+            r = await client.get(url, timeout=12)
+            d = feedparser.parse(r.text)
+        except Exception:
+            return []
+        return [{"titulo": html.unescape(e.get("title", "")), "url": e.get("link", ""),
+                 "trecho": html.unescape(re.sub("<.*?>", "", e.get("summary", "")))[:260], "veiculo": nome,
+                 "dominio": domain_of(e.get("link", "")), "data": e.get("published", ""),
+                 "origem": nome} for e in d.entries[:8]]
+
+    async def aosfatos():
+        try:
+            r = await client.get(f"https://www.aosfatos.org/noticias/?q={qq}", timeout=12)
+        except Exception:
+            return []
+        out, seen = [], set()
+        for path, tit in re.findall(r'<a[^>]+href="(/noticias/[^"]+)"[^>]*title="([^"]+)"', r.text):
+            if path in seen:
+                continue
+            seen.add(path)
+            out.append({"titulo": html.unescape(tit), "url": "https://www.aosfatos.org" + path, "trecho": "",
+                        "veiculo": "Aos Fatos", "dominio": "aosfatos.org", "data": "", "origem": "Aos Fatos"})
+        return out[:8]
+
+    res = await asyncio.gather(*(feed(n, u) for n, u in feeds), aosfatos(), return_exceptions=True)
+    return [i for r in res if isinstance(r, list) for i in r]
+
+
 async def buscar_wikipedia(client, q: str) -> list:
     try:
         r = await client.get("https://pt.wikipedia.org/w/api.php",
@@ -679,6 +715,10 @@ async def _coletar(alegacao: str) -> dict:
             buscar_ddg(c, q), buscar_gnews(c, q, False), buscar_factcheck_api(c, alegacao),
             buscar_gnews(c, q_curta, False), buscar_bing(c, q), buscar_bing(c, q_curta + " checagem"),
             buscar_wikipedia(c, q_curta),
+            # buscas extras nas agências (funcionam mesmo quando o DuckDuckGo bloqueia o servidor)
+            buscar_bing(c, q_curta + " (" + " OR ".join(f"site:{s.split('/')[0]}" for s in FC_GNEWS_SITES[:6]) + ")"),
+            buscar_gnews(c, q_curta + " falso", True), buscar_gnews(c, q_curta + " fake", False),
+            buscar_agencias_direto(c, " ".join(keywords(alegacao, 3))),
             return_exceptions=True)
         res = [r if isinstance(r, list) else [] for r in res]
     todos, vistos = [], set()
