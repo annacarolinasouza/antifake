@@ -411,7 +411,10 @@ def transcrever(audio_path: Path) -> dict:
     with wave.open(str(audio_path), "rb") as w:  # PCM 16 kHz mono gerado pelo ffmpeg
         pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
     audio = pcm.astype(np.float32) / 32768.0
-    segs, info = _WHISPER.transcribe(audio, beam_size=1, vad_filter=True, language=None)
+    segs, info = _WHISPER.transcribe(
+        audio, beam_size=3, vad_filter=True, language=os.getenv("WHISPER_LANG", "pt") or None,
+        initial_prompt=("Atenção! Mensagem do WhatsApp sobre Pix, Receita Federal, Banco Central, INSS, "
+                        "governo Lula, Bolsonaro, STF, TSE, vacina, eleições, imposto e notícias do Brasil."))
     texto = " ".join(s.text.strip() for s in segs).strip()
     return {"texto": texto, "idioma": info.language}
 
