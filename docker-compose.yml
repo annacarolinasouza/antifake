@@ -1,0 +1,9 @@
+services:
+  antifake:
+    build: .
+    ports: ["8000:8000"]
+    env_file: [backend/.env]
+    volumes: ["antifake-data:/app/backend/data"]
+    restart: unless-stopped
+volumes:
+  antifake-data:

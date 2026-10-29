@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antifake — recebeu? confira antes de repassar</title>
+<meta name="description" content="Cole o texto, o link, a foto ou o vídeo que chegou no WhatsApp. O Antifake pesquisa nas agências de checagem e devolve o veredito com as fontes. Grátis.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --papel:#E6ECF1; --folha:#FFFFFF; --tinta:#0E1A24; --tinta2:#2D3B47; --cinza:#5A6875;
+  --linha:#D3DBE2; --azul:#1F4FD8;
+  --falso:#C8102E; --enganoso:#C77700; --verdade:#1E7F4F; --semev:#4A5866;
+  --bolha:#DCF4D3; --bolha-borda:#BFE3B2;
+  --r:6px;
+  --display:'Bricolage Grotesque',system-ui,sans-serif;
+  --corpo:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--papel);color:var(--tinta);font:16px/1.55 var(--corpo);
+  background-image:radial-gradient(rgba(14,26,36,.045) 1px,transparent 1px);background-size:18px 18px}
+a{color:var(--azul)}
+:focus-visible{outline:3px solid var(--azul);outline-offset:2px;border-radius:4px}
+.wrap{max-width:860px;margin:0 auto;padding:0 18px}
+
+/* topo */
+.topo{display:flex;align-items:center;justify-content:space-between;padding:22px 0 0}
+.marca{display:flex;align-items:center;gap:10px;font:800 21px/1 var(--display);letter-spacing:-.01em;text-decoration:none;color:var(--tinta)}
+.selo{width:34px;height:34px;border:3px solid var(--falso);border-radius:50%;display:grid;place-items:center;
+  color:var(--falso);font:800 12px/1 var(--display);transform:rotate(-12deg)}
+.status{font:500 12px/1 var(--mono);color:var(--cinza);display:flex;align-items:center;gap:7px}
+.status i{width:8px;height:8px;border-radius:50%;background:var(--cinza)}
+.status.on i{background:var(--verdade);box-shadow:0 0 0 3px rgba(30,127,79,.18)}
+.status.off i{background:var(--falso)}
+
+/* hero */
+.hero{padding:44px 0 22px}
+.hero h1{font:800 clamp(34px,6.4vw,62px)/.98 var(--display);letter-spacing:-.025em;margin:0 0 14px;max-width:14ch}
+.hero h1 em{font-style:normal;color:var(--falso);position:relative;white-space:nowrap}
+.hero h1 em::after{content:"";position:absolute;left:-2%;right:-2%;bottom:.04em;height:.09em;background:var(--falso);opacity:.85;border-radius:2px;transform:rotate(-1.5deg)}
+.hero p{margin:0;color:var(--tinta2);max-width:56ch;font-size:17px}
+
+/* caixa de entrada — estilo mensagem encaminhada */
+.mesa{background:var(--folha);border-radius:var(--r);box-shadow:0 1px 0 var(--linha),0 22px 50px -28px rgba(14,26,36,.45);
+  padding:18px;position:relative}
+.bolha{background:var(--bolha);border:1px solid var(--bolha-borda);border-radius:12px 12px 12px 3px;padding:10px 14px 8px;position:relative;transition:box-shadow .2s}
+.bolha.arrastando{box-shadow:0 0 0 3px var(--azul)}
+.enc{font:italic 500 12px/1 var(--corpo);color:#56705A;display:flex;align-items:center;gap:6px;margin:2px 0 6px}
+.enc svg{width:14px;height:14px}
+textarea{width:100%;border:0;background:transparent;resize:none;font:16px/1.5 var(--corpo);color:var(--tinta);min-height:96px;outline:none}
+textarea::placeholder{color:#6E8A72}
+.anexo{display:none;align-items:center;gap:12px;background:rgba(255,255,255,.7);border-radius:8px;padding:8px;margin:4px 0 6px}
+.anexo.on{display:flex}
+.anexo img,.anexo video{width:64px;height:64px;object-fit:cover;border-radius:6px;background:#cfd8cf}
+.anexo .nome{font:500 13px/1.3 var(--corpo);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.anexo .nome small{display:block;color:var(--cinza);font:12px var(--mono)}
+.x{border:0;background:transparent;font-size:20px;cursor:pointer;color:var(--cinza);padding:4px 8px}
+.hora{text-align:right;font:11px var(--mono);color:#6E8A72}
+.acoes{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}
+.bt{font:600 15px/1 var(--corpo);border-radius:999px;border:0;cursor:pointer;padding:13px 22px;display:inline-flex;align-items:center;gap:8px;text-decoration:none}
+.bt-pri{background:var(--tinta);color:#fff}
+.bt-pri:hover{background:#1d2f3e}
+.bt-pri:disabled{opacity:.5;cursor:not-allowed}
+.bt-sec{background:transparent;color:var(--tinta);border:1.5px solid var(--linha)}
+.bt-sec:hover{border-color:var(--tinta)}
+.dica{font-size:13px;color:var(--cinza);margin-left:auto}
+.dica kbd{font:11px var(--mono);border:1px solid var(--linha);border-bottom-width:2px;border-radius:4px;padding:1px 5px;background:#f6f8fa}
+input[type=file]{display:none}
+.exemplos{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.exemplos span{font:500 12px var(--mono);color:var(--cinza);text-transform:uppercase;letter-spacing:.08em}
+.ex{font:13px var(--corpo);background:var(--papel);border:0;border-radius:999px;padding:7px 12px;cursor:pointer;color:var(--tinta2);text-align:left}
+.ex:hover{background:#d5dee6}
+
+/* progresso */
+.processo{margin-top:22px;display:none}
+.processo.on{display:block}
+.processo h3,.sec h3{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--cinza);margin:0 0 12px}
+.passos{list-style:none;margin:0;padding:0;counter-reset:p}
+.passos li{display:grid;grid-template-columns:26px 1fr;gap:12px;padding:9px 0;border-top:1px dashed var(--linha);animation:entra .3s ease both}
+.passos li:first-child{border-top:0}
+.marc{width:22px;height:22px;border-radius:50%;border:2px solid var(--linha);display:grid;place-items:center;font:700 11px var(--mono);margin-top:1px}
+.passos li.run .marc{border-color:var(--azul);border-right-color:transparent;animation:gira .8s linear infinite}
+.passos li.wait .marc{border-style:dotted}
+.passos li.ok .marc{background:var(--verdade);border-color:var(--verdade);color:#fff}
+.passos li.warn .marc{background:var(--enganoso);border-color:var(--enganoso);color:#fff}
+.passos b{font-weight:600;display:block;font-size:15px}
+.passos small{color:var(--cinza);font-size:13px;display:block;word-break:break-word}
+@keyframes gira{to{transform:rotate(360deg)}}
+@keyframes entra{from{opacity:0;transform:translateY(4px)}}
+.erro{display:none;margin-top:18px;border-left:4px solid var(--falso);background:#FBEDEF;padding:12px 14px;border-radius:0 var(--r) var(--r) 0;font-size:15px}
+.erro.on{display:block}
+
+/* resultado — dossiê com carimbo */
+.dossie{display:none;margin-top:30px}
+.dossie.on{display:block}
+.ficha{background:var(--folha);border-radius:var(--r);box-shadow:0 1px 0 var(--linha),0 22px 50px -28px rgba(14,26,36,.45);overflow:hidden;position:relative}
+.ficha-topo{display:flex;justify-content:space-between;align-items:center;padding:14px 22px;border-bottom:1px solid var(--linha);font:12px var(--mono);color:var(--cinza);gap:10px;flex-wrap:wrap}
+.ficha-corpo{padding:26px 22px 22px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px 28px;align-items:start}
+.alegacao h3{margin-bottom:8px}
+.alegacao q{display:block;font:700 clamp(20px,3.2vw,27px)/1.2 var(--display);letter-spacing:-.01em;quotes:"“" "”"}
+.carimbo{--c:var(--semev);color:var(--c);border:5px solid var(--c);border-radius:8px;padding:8px 16px 6px;text-align:center;
+  transform:rotate(-7deg);font:800 30px/1 var(--display);letter-spacing:.05em;white-space:nowrap;position:relative;
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.2 1.6'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.2 1.6'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E")}
+.carimbo small{display:block;font:600 11px/1.4 var(--mono);letter-spacing:.12em;margin-top:5px}
+.dossie.on .carimbo{animation:carimba .45s cubic-bezier(.2,1.6,.4,1) both .1s}
+@keyframes carimba{from{opacity:0;transform:rotate(-7deg) scale(1.5)}to{opacity:1;transform:rotate(-7deg) scale(1)}}
+.v-FALSO{--c:var(--falso)}.v-ENGANOSO{--c:var(--enganoso)}.v-VERDADEIRO{--c:var(--verdade)}.v-SEM{--c:var(--semev)}
+.explica{grid-column:1/-1;font-size:17px;color:var(--tinta2);margin:0;max-width:66ch}
+.medidor{grid-column:1/-1;display:flex;align-items:center;gap:12px;font:12px var(--mono);color:var(--cinza)}
+.medidor .barra{flex:1;max-width:260px;height:6px;background:var(--papel);border-radius:3px;overflow:hidden}
+.medidor .barra i{display:block;height:100%;background:var(--c,var(--semev));border-radius:3px;transition:width .8s ease .3s}
+.motor{font:11px var(--mono);color:var(--cinza)}
+
+.sec{padding:20px 22px;border-top:1px solid var(--linha)}
+.motivos{margin:0;padding-left:18px;color:var(--tinta2)}
+.motivos li{margin:4px 0}
+.fontes{list-style:none;margin:0;padding:0}
+.fontes li{padding:11px 0;border-top:1px solid #EDF1F4;display:grid;grid-template-columns:1fr auto;gap:4px 14px;align-items:start}
+.fontes li:first-child{border-top:0}
+.fontes a{font-weight:500;text-decoration:none;color:var(--tinta)}
+.fontes a:hover{color:var(--azul);text-decoration:underline}
+.fontes .meta{font:12px var(--mono);color:var(--cinza);grid-column:1}
+.etq{font:600 11px/1 var(--mono);padding:5px 8px;border-radius:4px;color:#fff;white-space:nowrap;align-self:center}
+.etq.ag{background:var(--tinta)}
+.etq.FALSO{background:var(--falso)}.etq.ENGANOSO{background:var(--enganoso)}.etq.VERDADEIRO{background:var(--verdade)}
+.etq.im{background:transparent;color:var(--cinza);border:1px solid var(--linha)}
+.vazio{color:var(--cinza);font-size:14px;margin:0}
+.grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.dado{background:var(--papel);border-radius:var(--r);padding:12px}
+.dado b{display:block;font:700 20px/1.1 var(--display)}
+.dado span{font-size:12px;color:var(--cinza)}
+.midia-img{max-width:100%;max-height:320px;border-radius:var(--r);display:block;border:1px solid var(--linha)}
+.quadros{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.quadros img{height:96px;border-radius:4px;border:1px solid var(--linha)}
+.transc{background:var(--papel);border-radius:var(--r);padding:12px 14px;font-size:14px;color:var(--tinta2);max-height:180px;overflow:auto;white-space:pre-wrap;margin:10px 0 0}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:500 13px var(--corpo);border:1.5px solid var(--linha);border-radius:999px;padding:7px 12px;text-decoration:none;color:var(--tinta);background:var(--folha)}
+.chip:hover{border-color:var(--tinta)}
+.compartilhar{display:flex;gap:10px;flex-wrap:wrap;padding:18px 22px;background:var(--tinta);align-items:center}
+.compartilhar .rot{color:#C9D3DC;font-size:14px;margin-right:auto}
+.compartilhar .bt{padding:11px 18px;font-size:14px}
+.bt-zap{background:#25D366;color:#06331B}
+.bt-cl{background:#fff;color:var(--tinta)}
+.bt-gh{background:transparent;color:#fff;border:1.5px solid #3A4B5A}
+
+/* histórico */
+.painel{margin:46px 0 30px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:30px}
+.painel>div{min-width:0}
+.hist{list-style:none;margin:0;padding:0}
+.hist li{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--linha);cursor:pointer}
+.hist li:hover .t{color:var(--azul)}
+.hist .t{flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist .q{width:10px;height:10px;border-radius:2px;flex-shrink:0;transform:rotate(45deg)}
+.hist time{font:11px var(--mono);color:var(--cinza)}
+.placar{display:grid;gap:8px}
+.placar div{display:grid;grid-template-columns:96px minmax(40px,1fr) 28px;align-items:center;gap:10px;font-size:13px}
+.placar .b{display:block;height:10px;border-radius:2px;background:var(--papel);overflow:hidden}
+.placar .b i{display:block;height:100%}
+.placar b{font:600 13px var(--mono);text-align:right}
+.como{border-top:2px solid var(--tinta);padding:22px 0 10px;display:grid;grid-template-columns:repeat(3,1fr);gap:22px;font-size:14px;color:var(--tinta2)}
+.como b{display:block;font:700 16px var(--display);color:var(--tinta);margin-bottom:4px}
+footer{padding:22px 0 40px;font-size:13px;color:var(--cinza);border-top:1px solid var(--linha);margin-top:18px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(120px);background:var(--tinta);color:#fff;padding:11px 18px;border-radius:999px;font-size:14px;transition:transform .25s,visibility .25s;z-index:9;visibility:hidden}
+.toast.on{transform:translateX(-50%) translateY(0);visibility:visible}
+
+@media (max-width:680px){
+  .ficha-corpo{grid-template-columns:1fr}
+  .carimbo{justify-self:start;font-size:26px}
+  .painel,.como{grid-template-columns:minmax(0,1fr)}
+  .dica{display:none}
+  .compartilhar .rot{width:100%}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topo">
+    <a class="marca" href="/"><span class="selo">AF</span>Antifake</a>
+    <span class="status" id="status"><i></i><span>conectando…</span></span>
+  </header>
+
+  <section class="hero">
+    <h1>Recebeu? <em>Confira</em> antes de repassar.</h1>
+    <p>Cole aqui a mensagem, o link, a foto ou o vídeo que chegou no grupo. A gente pesquisa nas agências de checagem e na imprensa e devolve o veredito com as fontes — de graça.</p>
+  </section>
+
+  <section class="mesa" aria-label="Enviar conteúdo para verificar">
+    <div class="bolha" id="bolha">
+      <div class="enc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5l6 6-6 6"/><path d="M21 11H9a6 6 0 0 0-6 6v2"/></svg>Encaminhada</div>
+      <label for="texto" class="sr" style="position:absolute;left:-9999px">Texto ou link</label>
+      <textarea id="texto" placeholder="Cole o texto ou o link da notícia… ou arraste uma foto/vídeo para cá"></textarea>
+      <div class="anexo" id="anexo">
+        <span id="anexo-prev"></span>
+        <div class="nome" id="anexo-nome"></div>
+        <button class="x" id="anexo-x" aria-label="Remover anexo">×</button>
+      </div>
+      <div class="hora" id="hora"></div>
+    </div>
+    <div class="acoes">
+      <button class="bt bt-pri" id="verificar" disabled>Verificar agora</button>
+      <button class="bt bt-sec" id="anexar" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
+        Foto ou vídeo
+      </button>
+      <input type="file" id="arquivo" accept="image/*,video/*">
+      <span class="dica"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> para verificar · cole imagens com <kbd>Ctrl</kbd>+<kbd>V</kbd></span>
+    </div>
+    <div class="exemplos">
+      <span>Testar com</span>
+      <button class="ex" data-t="URGENTE!!! O PIX vai passar a cobrar taxa de 5% em todas as transferências a partir do mês que vem. Compartilhe antes que apaguem!">Taxa no Pix</button>
+      <button class="ex" data-t="Vacina contra covid tem chip 5G para rastrear as pessoas">Chip na vacina</button>
+      <button class="ex" data-t="O Brasil conquistou o pentacampeonato da Copa do Mundo em 2002 vencendo a Alemanha na final">Penta em 2002</button>
+    </div>
+
+    <div class="processo" id="processo" aria-live="polite">
+      <h3>Verificando</h3>
+      <ol class="passos" id="passos"></ol>
+    </div>
+    <div class="erro" id="erro" role="alert"></div>
+  </section>
+
+  <section class="dossie" id="dossie" aria-live="polite"></section>
+
+  <section class="painel">
+    <div>
+      <div class="sec" style="padding:0;border:0"><h3>Últimas verificações</h3></div>
+      <ul class="hist" id="hist"><li style="cursor:default"><span class="t" style="color:var(--cinza)">Nenhuma verificação ainda. Teste um dos exemplos acima.</span></li></ul>
+    </div>
+    <div>
+      <div class="sec" style="padding:0;border:0"><h3>Placar da plataforma</h3></div>
+      <div class="placar" id="placar"></div>
+    </div>
+  </section>
+
+  <section class="como">
+    <div><b>Lê o conteúdo</b>Extrai o texto da página, lê o que está escrito na imagem e transcreve a fala do vídeo.</div>
+    <div><b>Procura quem já checou</b>Busca em Lupa, Aos Fatos, Fato ou Fake, Estadão Verifica, AFP, Comprova, Boatos.org e na imprensa.</div>
+    <div><b>Mostra o porquê</b>O veredito vem com os motivos e os links. Na dúvida, abra as fontes — elas valem mais que o carimbo.</div>
+  </section>
+
+  <footer>Antifake é uma ferramenta automática e gratuita. O resultado é um ponto de partida: confira sempre as fontes citadas.</footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeUrl = u => /^https?:\/\//i.test(u||'') ? u : (String(u||'').startsWith('/') ? API + u : '#');
+const COR = {'FALSO':'var(--falso)','ENGANOSO':'var(--enganoso)','VERDADEIRO':'var(--verdade)','SEM EVIDÊNCIA':'var(--semev)'};
+const vcls = v => v === 'SEM EVIDÊNCIA' ? 'SEM' : v;
+const SUB = {'FALSO':'não é verdade','ENGANOSO':'distorcido ou fora de contexto','VERDADEIRO':'confirmado por fontes','SEM EVIDÊNCIA':'não há como confirmar'};
+let arquivo = null, ultimo = null;
+
+function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('on'); clearTimeout(toast.t); toast.t=setTimeout(()=>el.classList.remove('on'),2200); }
+function hora(){ const d=new Date(); $('#hora').textContent=d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+hora(); setInterval(hora, 30000);
+
+function atualizaBotao(){ $('#verificar').disabled = !($('#texto').value.trim() || arquivo); }
+$('#texto').addEventListener('input', () => { atualizaBotao(); autoAltura(); });
+function autoAltura(){ const t=$('#texto'); t.style.height='auto'; t.style.height=Math.min(320, Math.max(96, t.scrollHeight))+'px'; }
+$('#texto').addEventListener('keydown', e => { if ((e.ctrlKey||e.metaKey) && e.key==='Enter') verificar(); });
+
+function setArquivo(f){
+  if (!f) return;
+  if (!/^(image|video)\//.test(f.type)) { toast('Envie uma foto ou um vídeo.'); return; }
+  if (f.size > 80*1024*1024) { toast('Arquivo maior que 80 MB.'); return; }
+  arquivo = f;
+  const url = URL.createObjectURL(f);
+  $('#anexo-prev').innerHTML = f.type.startsWith('video') ? `<video src="${url}" muted></video>` : `<img src="${url}" alt="">`;
+  $('#anexo-nome').innerHTML = `${esc(f.name || 'imagem colada')}<small>${f.type.startsWith('video')?'vídeo':'imagem'} · ${(f.size/1024/1024).toFixed(1)} MB</small>`;
+  $('#anexo').classList.add('on'); atualizaBotao();
+}
+$('#anexar').onclick = () => $('#arquivo').click();
+$('#arquivo').onchange = e => setArquivo(e.target.files[0]);
+$('#anexo-x').onclick = () => { arquivo=null; $('#arquivo').value=''; $('#anexo').classList.remove('on'); atualizaBotao(); };
+const bolha = $('#bolha');
+['dragenter','dragover'].forEach(ev => bolha.addEventListener(ev, e => { e.preventDefault(); bolha.classList.add('arrastando'); }));
+['dragleave','drop'].forEach(ev => bolha.addEventListener(ev, e => { e.preventDefault(); bolha.classList.remove('arrastando'); }));
+bolha.addEventListener('drop', e => setArquivo(e.dataTransfer.files[0]));
+document.addEventListener('paste', e => {
+  const it = [...(e.clipboardData?.items||[])].find(i => i.type.startsWith('image/'));
+  if (it) { const f = it.getAsFile(); setArquivo(new File([f], 'imagem-colada.png', {type:f.type})); toast('Imagem colada.'); }
+});
+document.querySelectorAll('.ex').forEach(b => b.onclick = () => { $('#texto').value=b.dataset.t; autoAltura(); atualizaBotao(); verificar(); });
+
+function renderPassos(steps){
+  $('#passos').innerHTML = steps.map((s,i) => `<li class="${esc(s.state)}">
+    <span class="marc">${s.state==='ok'?'✓':s.state==='warn'?'!':''}</span>
+    <div><b>${esc(s.label)}</b>${s.detail?`<small>${esc(s.detail)}</small>`:''}</div></li>`).join('');
+}
+function erro(msg){ const e=$('#erro'); e.textContent=msg; e.classList.toggle('on', !!msg); }
+
+async function verificar(){
+  const texto = $('#texto').value.trim();
+  if (!texto && !arquivo) return;
+  erro(''); $('#dossie').classList.remove('on');
+  $('#processo').classList.add('on');
+  renderPassos([{label: arquivo ? 'Enviando o arquivo' : 'Recebendo o conteúdo', state:'run'}]);
+  $('#verificar').disabled = true; $('#verificar').textContent = 'Verificando…';
+  try {
+    const fd = new FormData(); fd.append('text', texto); if (arquivo) fd.append('file', arquivo);
+    const r = await fetch(`${API}/api/check`, {method:'POST', body:fd});
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(j.detail || `O servidor respondeu ${r.status}.`);
+    await acompanhar(j.job);
+  } catch(e) {
+    erro(e.message === 'Failed to fetch' ? 'Não foi possível falar com o servidor. Confira se o Antifake está rodando e tente de novo.' : e.message);
+  } finally {
+    $('#verificar').textContent = 'Verificar agora'; atualizaBotao();
+  }
+}
+
+async function acompanhar(id){
+  const t0 = Date.now();
+  while (Date.now() - t0 < 6*60*1000) {
+    const r = await fetch(`${API}/api/check/${id}`);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || 'A verificação expirou. Tente de novo.');
+    renderPassos(j.steps.length ? j.steps : [{label:'Preparando a análise', state:'run'}]);
+    if (j.status === 'done') { mostrar(j.result, true); carregarPainel(); return; }
+    if (j.status === 'error') throw new Error(j.error);
+    await new Promise(res => setTimeout(res, 900));
+  }
+  throw new Error('A verificação demorou demais. Tente um vídeo mais curto ou cole o texto.');
+}
+
+function fmtData(s){ if(!s) return ''; const d=new Date(s); return isNaN(d) ? '' : d.toLocaleDateString('pt-BR'); }
+
+function mostrar(r, rolar){
+  ultimo = r;
+  const v = r.veredito, c = COR[v] || COR['SEM EVIDÊNCIA'];
+  const fontes = (r.fontes||[]).map(f => `<li>
+      <a href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener">${esc(f.titulo)}</a>
+      ${f.checador ? (f.classificacao ? `<span class="etq ${esc(f.classificacao)}">${esc(f.classificacao)}</span>` : `<span class="etq ag">checagem</span>`) : (f.confiavel ? `<span class="etq im">imprensa</span>` : '<span></span>')}
+      <span class="meta">${f.ref?`[${f.ref}] `:''}${esc(f.checador || f.veiculo || f.dominio)}${fmtData(f.data)?' · '+fmtData(f.data):''}</span></li>`).join('');
+  const s = r.sinais || {}, d = r.dominio, m = r.midia;
+  let dados = '';
+  dados += `<div class="dado"><b>${s.score ?? 0}/100</b><span>linguagem alarmista${s.termos?.length ? ': '+esc(s.termos.slice(0,3).join(', ')) : ''}</span></div>`;
+  dados += `<div class="dado"><b>${(r.checagens||[]).length}</b><span>checagens profissionais relacionadas</span></div>`;
+  dados += `<div class="dado"><b>${r.busca?.total ?? 0}</b><span>resultados analisados</span></div>`;
+  if (d) dados += `<div class="dado"><b>${esc(d.dominio)}</b><span>${d.registro ? 'site criado em '+esc(fmtData(d.registro)) : 'data de criação desconhecida'}${d.checador?' · agência de checagem':d.confiavel?' · veículo reconhecido':''}${d.satira?' · humor/sátira':''}</span></div>`;
+
+  let midia = '';
+  if (m) {
+    if (m.tipo === 'imagem') {
+      midia = `<div class="sec"><h3>A imagem</h3>
+        ${m.arquivo?`<img class="midia-img" src="${esc(safeUrl(m.arquivo))}" alt="Imagem enviada">`:''}
+        ${m.ocr?`<div class="transc">${esc(m.ocr)}</div>`:''}
+        <p class="vazio" style="margin-top:10px">${m.largura}×${m.altura}px · ${Object.keys(m.exif||{}).length ? 'EXIF: '+esc(Object.entries(m.exif).map(([k,v])=>k+': '+v).join(' · ')) : 'sem metadados de câmera (comum quando passa pelo WhatsApp)'}</p></div>`;
+    } else {
+      midia = `<div class="sec"><h3>O vídeo · ${esc(m.duracao ?? '?')} s</h3>
+        <div class="quadros">${(m.quadros||[]).map(q=>`<img src="${esc(safeUrl(q))}" alt="Quadro do vídeo">`).join('')}</div>
+        ${m.transcricao?`<div class="transc"><b>Fala transcrita:</b> ${esc(m.transcricao)}</div>`:'<p class="vazio" style="margin-top:10px">Nenhuma fala detectada no áudio.</p>'}
+        ${m.ocr_quadros?`<div class="transc"><b>Texto na tela:</b> ${esc(m.ocr_quadros)}</div>`:''}</div>`;
+    }
+    if (m.busca_reversa?.length) midia += `<div class="sec"><h3>Onde essa ${m.tipo==='video'?'cena':'imagem'} já apareceu? (busca reversa)</h3>
+      <div class="chips">${m.busca_reversa.map(b=>`<a class="chip" href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.nome)} ↗</a>`).join('')}</div>
+      <p class="vazio" style="margin-top:10px">Se a imagem aparece em notícias antigas ou de outro lugar, ela está sendo usada fora de contexto.</p></div>`;
+  }
+
+  $('#dossie').innerHTML = `<article class="ficha">
+    <div class="ficha-topo"><span>Verificação nº ${esc(r.id)}</span><span>${esc(new Date(r.created_at).toLocaleString('pt-BR'))} · ${esc({texto:'texto',link:'link',imagem:'imagem',video:'vídeo'}[r.input_type]||r.input_type)}</span></div>
+    <div class="ficha-corpo" style="--c:${c}">
+      <div class="alegacao"><h3 style="font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--cinza)">Alegação analisada</h3><q>${esc(r.alegacao)}</q></div>
+      <div class="carimbo v-${vcls(v)}">${esc(v)}<small>${esc(SUB[v]||'')}</small></div>
+      <p class="explica">${esc(r.explicacao)}</p>
+      <div class="medidor"><span>confiança ${r.confianca}%</span><span class="barra"><i style="width:0"></i></span><span class="motor">${r.motor==='regras'?'análise por regras transparentes':'análise: '+esc(r.motor)}</span></div>
+    </div>
+    ${(r.motor!=='regras' && (r.motivos||[]).length) ? `<div class="sec"><h3>Por que esse veredito</h3><ul class="motivos">${r.motivos.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+    <div class="sec"><h3>Fontes consultadas</h3>${fontes ? `<ul class="fontes">${fontes}</ul>` : '<p class="vazio">Nenhuma fonte relacionada encontrada. Isso não prova que é falso — mas desconfie de algo que nenhum veículo sério publicou.</p>'}</div>
+    <div class="sec"><h3>Sinais analisados</h3><div class="grade">${dados}</div></div>
+    ${midia}
+    <div class="sec"><h3>Investigue mais</h3><div class="chips">${(r.verificar_tambem||[]).map(b=>`<a class="chip" href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.nome)} ↗</a>`).join('')}</div></div>
+    <div class="compartilhar">
+      <span class="rot">Avise o grupo com o resultado:</span>
+      <a class="bt bt-zap" id="zap" target="_blank" rel="noopener">WhatsApp</a>
+      <button class="bt bt-cl" id="copiar">Copiar link</button>
+      <button class="bt bt-gh" id="nova">Nova verificação</button>
+    </div>
+  </article>`;
+  $('#dossie').classList.add('on');
+  requestAnimationFrame(() => { const b = $('#dossie .barra i'); if (b) { b.style.background = c; b.style.width = r.confianca + '%'; } });
+  const link = (API || location.origin) + '/v/' + r.id;
+  const msg = `🔎 Verifiquei no Antifake: *${v}*\n“${r.alegacao}”\n\n${r.explicacao}\n\nFontes: ${link}`;
+  $('#zap').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+  $('#copiar').onclick = async () => {
+    try { if (navigator.share && matchMedia('(pointer:coarse)').matches) await navigator.share({title:'Antifake: '+v, text:msg, url:link});
+          else { await navigator.clipboard.writeText(link); toast('Link copiado.'); } }
+    catch(_) { prompt('Copie o link:', link); }
+  };
+  $('#nova').onclick = () => { $('#texto').value=''; $('#anexo-x').click(); $('#dossie').classList.remove('on'); $('#processo').classList.remove('on'); window.scrollTo({top:0,behavior:'smooth'}); $('#texto').focus(); };
+  history.replaceState(null, '', '#v=' + r.id);
+  if (rolar) $('#dossie').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function carregarPainel(){
+  try {
+    const [h, s] = await Promise.all([fetch(`${API}/api/history?limit=8`).then(r=>r.json()), fetch(`${API}/api/stats`).then(r=>r.json())]);
+    if (h.length) $('#hist').innerHTML = h.map(i => `<li data-id="${esc(i.id)}" tabindex="0">
+      <span class="q" style="background:${COR[i.veredito]||COR['SEM EVIDÊNCIA']}"></span>
+      <span class="t" title="${esc(i.alegacao)}">${esc(i.alegacao)}</span><time>${esc(i.veredito)}</time></li>`).join('');
+    document.querySelectorAll('#hist li[data-id]').forEach(li => { const go=()=>abrir(li.dataset.id); li.onclick=go; li.onkeydown=e=>{if(e.key==='Enter')go();}; });
+    const tot = Math.max(1, s.total);
+    $('#placar').innerHTML = ['FALSO','ENGANOSO','VERDADEIRO','SEM EVIDÊNCIA'].map(v => `<div><span>${v.charAt(0)+v.slice(1).toLowerCase()}</span>
+      <span class="b"><i style="width:${(s[v]/tot*100).toFixed(0)}%;background:${COR[v]}"></i></span><b>${s[v]}</b></div>`).join('')
+      + `<p class="vazio" style="margin-top:6px">${s.total} verificaç${s.total===1?'ão':'ões'} no total</p>`;
+  } catch(_) {}
+}
+async function abrir(id){
+  try { const r = await fetch(`${API}/api/analysis/${id}`); if (!r.ok) throw 0; erro(''); $('#processo').classList.remove('on'); mostrar(await r.json(), true); }
+  catch(_) { toast('Não foi possível abrir essa verificação.'); }
+}
+async function saude(){
+  const el = $('#status');
+  try { const r = await fetch(`${API}/api/health`); const j = await r.json();
+    el.className='status on'; el.querySelector('span').textContent = 'online · grátis' + (j.recursos?.llm ? ' · IA ativa' : '');
+  } catch(_) { el.className='status off'; el.querySelector('span').textContent='servidor offline'; }
+}
+saude(); carregarPainel(); setInterval(saude, 30000);
+const m = location.hash.match(/v=([a-f0-9]+)/); if (m) abrir(m[1]);
+</script>
+</body>
+</html>
