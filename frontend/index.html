@@ -148,6 +148,34 @@ input[type=file]{display:none}
 .bt-cl{background:#fff;color:var(--tinta)}
 .bt-gh{background:transparent;color:#fff;border:1.5px solid #3A4B5A}
 
+.priv{display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:13px;color:var(--tinta2);cursor:pointer}
+.priv input{margin-top:3px;accent-color:var(--tinta)}
+.priv small{color:var(--cinza)}
+.envio{display:flex;align-items:center;gap:12px;margin:0 0 10px}
+.envio .barra{flex:1;max-width:320px;height:6px;background:var(--papel);border-radius:3px;overflow:hidden}
+.envio .barra i{display:block;height:100%;width:0;background:var(--azul);transition:width .2s}
+.envio small{font:12px var(--mono);color:var(--cinza)}
+.acervo{margin:46px 0 30px}
+.acervo-topo{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:30px;align-items:end;margin-bottom:16px}
+.acervo h2{font:800 clamp(26px,4vw,34px)/1 var(--display);letter-spacing:-.02em;margin:0 0 8px}
+.acervo-topo p{margin:0;color:var(--tinta2)}
+.busca{display:flex;gap:8px;flex-wrap:wrap;background:var(--folha);padding:10px;border-radius:var(--r);box-shadow:0 1px 0 var(--linha)}
+.busca input{flex:1 1 240px;border:1.5px solid var(--linha);border-radius:999px;padding:11px 16px;font:15px var(--corpo);background:var(--folha);color:var(--tinta);min-width:0}
+.busca select{border:1.5px solid var(--linha);border-radius:999px;padding:10px 12px;font:14px var(--corpo);background:var(--folha);color:var(--tinta)}
+.busca .bt{padding:11px 20px}
+.res-info{font:12px var(--mono);color:var(--cinza);margin:14px 0 4px}
+.hist .vaz{cursor:default}.hist .vaz .t{color:var(--cinza);white-space:normal}
+.hist .tipo{font:11px var(--mono);color:var(--cinza);width:44px;flex-shrink:0}
+.pag{display:flex;gap:8px;justify-content:center;margin-top:14px}
+.pag button{font:600 13px var(--corpo);border:1.5px solid var(--linha);background:var(--folha);border-radius:999px;padding:8px 14px;cursor:pointer;color:var(--tinta)}
+.pag button:disabled{opacity:.4;cursor:default}
+.fb{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.fb button{font:500 13px var(--corpo);border:1.5px solid var(--linha);background:var(--folha);border-radius:999px;padding:8px 14px;cursor:pointer;color:var(--tinta)}
+.fb button.on{border-color:var(--tinta);background:var(--tinta);color:#fff}
+.fb small{color:var(--cinza);font-size:12px}
+.fb textarea{width:100%;min-height:70px;border:1.5px solid var(--linha);border-radius:var(--r);padding:10px;font:14px var(--corpo);margin-top:8px;display:none}
+.fb textarea.on{display:block}
+footer p{margin:0 0 10px;max-width:80ch}
 /* histórico */
 .painel{margin:46px 0 30px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:30px}
 .painel>div{min-width:0}
@@ -171,7 +199,10 @@ footer{padding:22px 0 40px;font-size:13px;color:var(--cinza);border-top:1px soli
 @media (max-width:680px){
   .ficha-corpo{grid-template-columns:1fr}
   .carimbo{justify-self:start;font-size:26px}
-  .painel,.como{grid-template-columns:minmax(0,1fr)}
+  .painel,.como,.acervo-topo{grid-template-columns:minmax(0,1fr)}
+  .busca select{flex:1 1 45%}
+  .hist .tipo,.hist time[datetime]{display:none}
+  .hist li{gap:10px}
   .dica{display:none}
   .compartilhar .rot{width:100%}
 }
@@ -203,14 +234,15 @@ footer{padding:22px 0 40px;font-size:13px;color:var(--cinza);border-top:1px soli
       <div class="hora" id="hora"></div>
     </div>
     <div class="acoes">
-      <button class="bt bt-pri" id="verificar" disabled>Verificar agora</button>
+      <button class="bt bt-pri" id="verificar" type="button" disabled>Verificar agora</button>
       <button class="bt bt-sec" id="anexar" type="button">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
         Foto ou vídeo
       </button>
-      <input type="file" id="arquivo" accept="image/*,video/*">
+      <input type="file" id="arquivo" accept="image/*,video/*,.heic,.heif,.mov,.mp4,.webm,.3gp,.m4v">
       <span class="dica"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> para verificar · cole imagens com <kbd>Ctrl</kbd>+<kbd>V</kbd></span>
     </div>
+    <label class="priv"><input type="checkbox" id="publico" checked> Mostrar esta verificação na consulta pública <small>(desmarque se o conteúdo tiver dados pessoais)</small></label>
     <div class="exemplos">
       <span>Testar com</span>
       <button class="ex" data-t="URGENTE!!! O PIX vai passar a cobrar taxa de 5% em todas as transferências a partir do mês que vem. Compartilhe antes que apaguem!">Taxa no Pix</button>
@@ -220,6 +252,7 @@ footer{padding:22px 0 40px;font-size:13px;color:var(--cinza);border-top:1px soli
 
     <div class="processo" id="processo" aria-live="polite">
       <h3>Verificando</h3>
+      <div class="envio" id="envio" hidden><span class="barra"><i id="envio-i"></i></span><small id="envio-t"></small></div>
       <ol class="passos" id="passos"></ol>
     </div>
     <div class="erro" id="erro" role="alert"></div>
@@ -227,15 +260,27 @@ footer{padding:22px 0 40px;font-size:13px;color:var(--cinza);border-top:1px soli
 
   <section class="dossie" id="dossie" aria-live="polite"></section>
 
-  <section class="painel">
-    <div>
-      <div class="sec" style="padding:0;border:0"><h3>Últimas verificações</h3></div>
-      <ul class="hist" id="hist"><li style="cursor:default"><span class="t" style="color:var(--cinza)">Nenhuma verificação ainda. Teste um dos exemplos acima.</span></li></ul>
+  <section class="acervo" id="consulta" aria-labelledby="t-acervo">
+    <div class="acervo-topo">
+      <div>
+        <h2 id="t-acervo">Consulta pública</h2>
+        <p>Antes de verificar, veja se alguém já checou. Todas as verificações ficam guardadas aqui.</p>
+      </div>
+      <div class="placar" id="placar" aria-label="Placar"></div>
     </div>
-    <div>
-      <div class="sec" style="padding:0;border:0"><h3>Placar da plataforma</h3></div>
-      <div class="placar" id="placar"></div>
-    </div>
+    <form class="busca" id="form-busca" role="search">
+      <input type="search" id="q" placeholder="Buscar no acervo: pix, vacina, eleição, INSS…" aria-label="Buscar no acervo">
+      <select id="f-veredito" aria-label="Filtrar por veredito">
+        <option value="">Todos os vereditos</option><option>FALSO</option><option>ENGANOSO</option><option>VERDADEIRO</option><option>SEM EVIDÊNCIA</option>
+      </select>
+      <select id="f-tipo" aria-label="Filtrar por formato">
+        <option value="">Todos os formatos</option><option value="texto">Texto</option><option value="link">Link</option><option value="imagem">Foto</option><option value="video">Vídeo</option>
+      </select>
+      <button class="bt bt-pri" type="submit">Buscar</button>
+    </form>
+    <p class="res-info" id="res-info"></p>
+    <ul class="hist" id="hist"><li class="vaz"><span class="t">Carregando o acervo…</span></li></ul>
+    <div class="pag" id="pag"></div>
   </section>
 
   <section class="como">
@@ -244,7 +289,10 @@ footer{padding:22px 0 40px;font-size:13px;color:var(--cinza);border-top:1px soli
     <div><b>Mostra o porquê</b>O veredito vem com os motivos e os links. Na dúvida, abra as fontes — elas valem mais que o carimbo.</div>
   </section>
 
-  <footer>Antifake é uma ferramenta automática e gratuita. O resultado é um ponto de partida: confira sempre as fontes citadas.</footer>
+  <footer>
+    <p><b>Antifake</b> é uma consulta pública, gratuita e automática. O resultado é um ponto de partida: confira sempre as fontes citadas. Não substitui o trabalho das agências de checagem.</p>
+    <p><b>Privacidade:</b> guardamos o texto, o link, a foto (reduzida) e quadros do vídeo para que outras pessoas possam consultar a mesma verificação. O vídeo original é apagado logo após a análise. Não pedimos cadastro nem guardamos seu IP. Para remover uma verificação com dados pessoais, use o botão "Resultado errado / remover" e explique.</p>
+  </footer>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -256,30 +304,44 @@ const safeUrl = u => /^https?:\/\//i.test(u||'') ? u : (String(u||'').startsWith
 const COR = {'FALSO':'var(--falso)','ENGANOSO':'var(--enganoso)','VERDADEIRO':'var(--verdade)','SEM EVIDÊNCIA':'var(--semev)'};
 const vcls = v => v === 'SEM EVIDÊNCIA' ? 'SEM' : v;
 const SUB = {'FALSO':'não é verdade','ENGANOSO':'distorcido ou fora de contexto','VERDADEIRO':'confirmado por fontes','SEM EVIDÊNCIA':'não há como confirmar'};
-let arquivo = null, ultimo = null;
+const TIPO = {texto:'texto', link:'link', imagem:'foto', video:'vídeo'};
+const VIDEO_EXT = /\.(mp4|mov|webm|m4v|3gp|mkv|avi)$/i, IMG_EXT = /\.(jpe?g|png|webp|heic|heif|gif|bmp)$/i;
+let arquivo = null, ultimo = null, ocupado = false;
+let LIM = {max_upload_mb: 40, video_max_s: 90};
 
-function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('on'); clearTimeout(toast.t); toast.t=setTimeout(()=>el.classList.remove('on'),2200); }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('on'); clearTimeout(toast.t); toast.t=setTimeout(()=>el.classList.remove('on'),2600); }
 function hora(){ const d=new Date(); $('#hora').textContent=d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
 hora(); setInterval(hora, 30000);
 
-function atualizaBotao(){ $('#verificar').disabled = !($('#texto').value.trim() || arquivo); }
-$('#texto').addEventListener('input', () => { atualizaBotao(); autoAltura(); });
+function atualizaBotao(){ $('#verificar').disabled = ocupado || !($('#texto').value.trim() || arquivo); }
 function autoAltura(){ const t=$('#texto'); t.style.height='auto'; t.style.height=Math.min(320, Math.max(96, t.scrollHeight))+'px'; }
-$('#texto').addEventListener('keydown', e => { if ((e.ctrlKey||e.metaKey) && e.key==='Enter') verificar(); });
+$('#texto').addEventListener('input', () => { atualizaBotao(); autoAltura(); });
+$('#texto').addEventListener('keydown', e => { if ((e.ctrlKey||e.metaKey) && e.key==='Enter') { e.preventDefault(); verificar(); } });
+$('#verificar').addEventListener('click', e => { e.preventDefault(); verificar(); });
+
+const ehVideo = f => (f.type||'').startsWith('video') || VIDEO_EXT.test(f.name||'');
+const ehImagem = f => (f.type||'').startsWith('image') || IMG_EXT.test(f.name||'');
 
 function setArquivo(f){
   if (!f) return;
-  if (!/^(image|video)\//.test(f.type)) { toast('Envie uma foto ou um vídeo.'); return; }
-  if (f.size > 80*1024*1024) { toast('Arquivo maior que 80 MB.'); return; }
+  if (!ehVideo(f) && !ehImagem(f)) { toast('Envie uma foto (JPG, PNG, HEIC) ou um vídeo (MP4, MOV).'); return; }
+  if (ehVideo(f) && f.size > LIM.max_upload_mb*1024*1024) {
+    toast(`Vídeo com ${(f.size/1048576).toFixed(0)} MB. O limite é ${LIM.max_upload_mb} MB — corte um trecho menor.`); return;
+  }
+  if (f.size > 60*1024*1024) { toast('Arquivo grande demais.'); return; }
   arquivo = f;
   const url = URL.createObjectURL(f);
-  $('#anexo-prev').innerHTML = f.type.startsWith('video') ? `<video src="${url}" muted></video>` : `<img src="${url}" alt="">`;
-  $('#anexo-nome').innerHTML = `${esc(f.name || 'imagem colada')}<small>${f.type.startsWith('video')?'vídeo':'imagem'} · ${(f.size/1024/1024).toFixed(1)} MB</small>`;
+  const prev = ehVideo(f) ? `<video src="${url}" muted playsinline preload="metadata"></video>` : `<img src="${url}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'🖼️',style:'font-size:40px;width:64px;text-align:center'}))">`;
+  $('#anexo-prev').innerHTML = prev;
+  $('#anexo-nome').innerHTML = `${esc(f.name || 'imagem colada')}<small>${ehVideo(f)?'vídeo':'imagem'} · ${(f.size/1048576).toFixed(1)} MB</small>`;
   $('#anexo').classList.add('on'); atualizaBotao();
+  $('#verificar').focus({preventScroll:true});
 }
-$('#anexar').onclick = () => $('#arquivo').click();
-$('#arquivo').onchange = e => setArquivo(e.target.files[0]);
-$('#anexo-x').onclick = () => { arquivo=null; $('#arquivo').value=''; $('#anexo').classList.remove('on'); atualizaBotao(); };
+function limparAnexo(){ arquivo=null; $('#arquivo').value=''; $('#anexo').classList.remove('on'); atualizaBotao(); }
+$('#anexar').addEventListener('click', () => $('#arquivo').click());
+$('#arquivo').addEventListener('change', e => setArquivo(e.target.files[0]));
+$('#anexo-x').addEventListener('click', limparAnexo);
 const bolha = $('#bolha');
 ['dragenter','dragover'].forEach(ev => bolha.addEventListener(ev, e => { e.preventDefault(); bolha.classList.add('arrastando'); }));
 ['dragleave','drop'].forEach(ev => bolha.addEventListener(ev, e => { e.preventDefault(); bolha.classList.remove('arrastando'); }));
@@ -288,45 +350,112 @@ document.addEventListener('paste', e => {
   const it = [...(e.clipboardData?.items||[])].find(i => i.type.startsWith('image/'));
   if (it) { const f = it.getAsFile(); setArquivo(new File([f], 'imagem-colada.png', {type:f.type})); toast('Imagem colada.'); }
 });
-document.querySelectorAll('.ex').forEach(b => b.onclick = () => { $('#texto').value=b.dataset.t; autoAltura(); atualizaBotao(); verificar(); });
+document.querySelectorAll('.ex').forEach(b => b.addEventListener('click', () => { limparAnexo(); $('#texto').value=b.dataset.t; autoAltura(); atualizaBotao(); verificar(); }));
+
+// reduz fotos grandes no próprio aparelho (envio mais rápido no 4G)
+async function prepararImagem(f){
+  if (!ehImagem(f) || f.size < 1.5*1024*1024 || /heic|heif/i.test(f.type + f.name) || /gif/i.test(f.type)) return f;
+  try {
+    const bmp = await createImageBitmap(f);
+    const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.round(bmp.width*k); c.height = Math.round(bmp.height*k);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.88));
+    if (!blob || blob.size >= f.size) return f;
+    return new File([blob], (f.name||'foto').replace(/\.\w+$/, '') + '.jpg', {type:'image/jpeg'});
+  } catch(_) { return f; }
+}
 
 function renderPassos(steps){
-  $('#passos').innerHTML = steps.map((s,i) => `<li class="${esc(s.state)}">
+  $('#passos').innerHTML = steps.map(s => `<li class="${esc(s.state)}">
     <span class="marc">${s.state==='ok'?'✓':s.state==='warn'?'!':''}</span>
     <div><b>${esc(s.label)}</b>${s.detail?`<small>${esc(s.detail)}</small>`:''}</div></li>`).join('');
 }
-function erro(msg){ const e=$('#erro'); e.textContent=msg; e.classList.toggle('on', !!msg); }
+function erro(msg){ const e=$('#erro'); e.textContent=msg||''; e.classList.toggle('on', !!msg); if (msg) e.scrollIntoView({behavior:'smooth', block:'center'}); }
+function envio(pct, txt){ $('#envio').hidden = pct == null; if (pct != null){ $('#envio-i').style.width = pct+'%'; $('#envio-t').textContent = txt||''; } }
+
+// envio com progresso (XHR) — mostra a barra durante o upload de foto/vídeo
+function postForm(url, fd, onProg){
+  return new Promise((ok, falha) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', url); x.timeout = 180000;
+    x.upload.onprogress = e => { if (e.lengthComputable && onProg) onProg(e.loaded, e.total); };
+    x.onload = () => { let j = null; try { j = JSON.parse(x.responseText); } catch(_) {} ok({status:x.status, json:j}); };
+    x.onerror = () => falha(new Error('rede'));
+    x.ontimeout = () => falha(new Error('tempo'));
+    x.send(fd);
+  });
+}
+async function getJSON(url, tentativas=3){
+  for (let i=0; i<tentativas; i++){
+    try { const r = await fetch(url, {cache:'no-store'}); const j = await r.json().catch(()=>null);
+          if (j) return {status:r.status, json:j}; } catch(_) {}
+    await sleep(1500*(i+1));
+  }
+  return {status:0, json:null};
+}
+// o plano grátis "dorme": acorda o servidor antes de enviar
+async function acordarServidor(){
+  for (let i=0; i<30; i++){
+    try { const r = await fetch(`${API}/api/ping`, {cache:'no-store'}); if (r.ok && (await r.json().catch(()=>null))?.pong) return true; } catch(_) {}
+    if (i === 0) renderPassos([{label:'Acordando o servidor (até 1 minuto na primeira visita)…', state:'run'}]);
+    await sleep(3000);
+  }
+  return false;
+}
 
 async function verificar(){
+  if (ocupado) return;
   const texto = $('#texto').value.trim();
-  if (!texto && !arquivo) return;
+  if (!texto && !arquivo) { toast('Cole um texto/link ou anexe uma foto ou vídeo.'); return; }
+  ocupado = true; atualizaBotao();
   erro(''); $('#dossie').classList.remove('on');
-  $('#processo').classList.add('on');
-  renderPassos([{label: arquivo ? 'Enviando o arquivo' : 'Recebendo o conteúdo', state:'run'}]);
-  $('#verificar').disabled = true; $('#verificar').textContent = 'Verificando…';
+  $('#processo').classList.add('on'); $('#processo').scrollIntoView({behavior:'smooth', block:'nearest'});
+  $('#verificar').textContent = 'Verificando…';
+  renderPassos([{label: arquivo ? 'Preparando o arquivo' : 'Recebendo o conteúdo', state:'run'}]);
   try {
-    const fd = new FormData(); fd.append('text', texto); if (arquivo) fd.append('file', arquivo);
-    const r = await fetch(`${API}/api/check`, {method:'POST', body:fd});
-    const j = await r.json().catch(()=>({}));
-    if (!r.ok) throw new Error(j.detail || `O servidor respondeu ${r.status}.`);
-    await acompanhar(j.job);
+    if (!await acordarServidor()) throw new Error('O servidor não respondeu. Verifique sua internet e tente de novo em instantes.');
+    const fd = new FormData();
+    fd.append('text', texto); fd.append('publico', $('#publico').checked ? '1' : '0');
+    if (arquivo) {
+      const f = await prepararImagem(arquivo);
+      fd.append('file', f, f.name || (ehVideo(f) ? 'video.mp4' : 'foto.jpg'));
+      renderPassos([{label: `Enviando ${ehVideo(f)?'o vídeo':'a foto'} (${(f.size/1048576).toFixed(1)} MB)`, state:'run'}]);
+      envio(0, 'enviando…');
+    }
+    let res;
+    for (let t=0; t<2; t++){
+      try {
+        res = await postForm(`${API}/api/check`, fd, (a,b) => envio(Math.round(a/b*100), `${(a/1048576).toFixed(1)} de ${(b/1048576).toFixed(1)} MB`));
+        if (res.json || t) break;
+      } catch(e) { if (t) throw e; }
+      await acordarServidor();
+    }
+    envio(null);
+    if (!res || !res.json) throw new Error('O servidor demorou para responder. Tente de novo.');
+    if (res.status >= 400) throw new Error(res.json.detail || `O servidor respondeu ${res.status}.`);
+    await acompanhar(res.json.job);
   } catch(e) {
-    erro(e.message === 'Failed to fetch' ? 'Não foi possível falar com o servidor. Confira se o Antifake está rodando e tente de novo.' : e.message);
+    envio(null);
+    const m = e.message;
+    erro(m === 'rede' ? 'A conexão caiu durante o envio. Verifique a internet e tente de novo.' :
+         m === 'tempo' ? 'O envio demorou demais. Tente um vídeo menor ou uma conexão Wi-Fi.' : m);
+    $('#processo').classList.remove('on');
   } finally {
-    $('#verificar').textContent = 'Verificar agora'; atualizaBotao();
+    ocupado = false; $('#verificar').textContent = 'Verificar agora'; atualizaBotao();
   }
 }
 
 async function acompanhar(id){
-  const t0 = Date.now();
-  while (Date.now() - t0 < 6*60*1000) {
-    const r = await fetch(`${API}/api/check/${id}`);
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.detail || 'A verificação expirou. Tente de novo.');
-    renderPassos(j.steps.length ? j.steps : [{label:'Preparando a análise', state:'run'}]);
-    if (j.status === 'done') { mostrar(j.result, true); carregarPainel(); return; }
-    if (j.status === 'error') throw new Error(j.error);
-    await new Promise(res => setTimeout(res, 900));
+  const t0 = Date.now(); let falhas = 0;
+  while (Date.now() - t0 < 8*60*1000) {
+    const {status, json} = await getJSON(`${API}/api/check/${id}`);
+    if (!json) { if (++falhas > 4) throw new Error('Perdemos contato com o servidor. Tente de novo.'); continue; }
+    if (status === 404) throw new Error(json.detail);
+    renderPassos(json.steps?.length ? json.steps : [{label:'Na fila para análise', state:'run'}]);
+    if (json.status === 'done') { mostrar(json.result, true); carregarAcervo(); return; }
+    if (json.status === 'error') throw new Error(json.error);
+    await sleep(1000);
   }
   throw new Error('A verificação demorou demais. Tente um vídeo mais curto ou cole o texto.');
 }
@@ -337,7 +466,7 @@ function mostrar(r, rolar){
   ultimo = r;
   const v = r.veredito, c = COR[v] || COR['SEM EVIDÊNCIA'];
   const fontes = (r.fontes||[]).map(f => `<li>
-      <a href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener">${esc(f.titulo)}</a>
+      <a href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener nofollow">${esc(f.titulo)}</a>
       ${f.checador ? (f.classificacao ? `<span class="etq ${esc(f.classificacao)}">${esc(f.classificacao)}</span>` : `<span class="etq ag">checagem</span>`) : (f.confiavel ? `<span class="etq im">imprensa</span>` : '<span></span>')}
       <span class="meta">${f.ref?`[${f.ref}] `:''}${esc(f.checador || f.veiculo || f.dominio)}${fmtData(f.data)?' · '+fmtData(f.data):''}</span></li>`).join('');
   const s = r.sinais || {}, d = r.dominio, m = r.midia;
@@ -351,12 +480,12 @@ function mostrar(r, rolar){
   if (m) {
     if (m.tipo === 'imagem') {
       midia = `<div class="sec"><h3>A imagem</h3>
-        ${m.arquivo?`<img class="midia-img" src="${esc(safeUrl(m.arquivo))}" alt="Imagem enviada">`:''}
-        ${m.ocr?`<div class="transc">${esc(m.ocr)}</div>`:''}
+        ${m.arquivo?`<img class="midia-img" src="${esc(safeUrl(m.arquivo))}" alt="Imagem enviada" loading="lazy">`:''}
+        ${m.ocr?`<div class="transc"><b>Texto lido na imagem:</b> ${esc(m.ocr)}</div>`:''}
         <p class="vazio" style="margin-top:10px">${m.largura}×${m.altura}px · ${Object.keys(m.exif||{}).length ? 'EXIF: '+esc(Object.entries(m.exif).map(([k,v])=>k+': '+v).join(' · ')) : 'sem metadados de câmera (comum quando passa pelo WhatsApp)'}</p></div>`;
     } else {
       midia = `<div class="sec"><h3>O vídeo · ${esc(m.duracao ?? '?')} s</h3>
-        <div class="quadros">${(m.quadros||[]).map(q=>`<img src="${esc(safeUrl(q))}" alt="Quadro do vídeo">`).join('')}</div>
+        <div class="quadros">${(m.quadros||[]).map(q=>`<img src="${esc(safeUrl(q))}" alt="Quadro do vídeo" loading="lazy">`).join('')}</div>
         ${m.transcricao?`<div class="transc"><b>Fala transcrita:</b> ${esc(m.transcricao)}</div>`:'<p class="vazio" style="margin-top:10px">Nenhuma fala detectada no áudio.</p>'}
         ${m.ocr_quadros?`<div class="transc"><b>Texto na tela:</b> ${esc(m.ocr_quadros)}</div>`:''}</div>`;
     }
@@ -364,9 +493,10 @@ function mostrar(r, rolar){
       <div class="chips">${m.busca_reversa.map(b=>`<a class="chip" href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.nome)} ↗</a>`).join('')}</div>
       <p class="vazio" style="margin-top:10px">Se a imagem aparece em notícias antigas ou de outro lugar, ela está sendo usada fora de contexto.</p></div>`;
   }
+  const fb = r.feedback || {util:0, errado:0};
 
   $('#dossie').innerHTML = `<article class="ficha">
-    <div class="ficha-topo"><span>Verificação nº ${esc(r.id)}</span><span>${esc(new Date(r.created_at).toLocaleString('pt-BR'))} · ${esc({texto:'texto',link:'link',imagem:'imagem',video:'vídeo'}[r.input_type]||r.input_type)}</span></div>
+    <div class="ficha-topo"><span>Verificação nº ${esc(r.id)}</span><span>${esc(new Date(r.created_at).toLocaleString('pt-BR'))} · ${esc(TIPO[r.input_type]||r.input_type)}${r.publico===false?' · <b>privada</b>':''}</span></div>
     <div class="ficha-corpo" style="--c:${c}">
       <div class="alegacao"><h3 style="font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--cinza)">Alegação analisada</h3><q>${esc(r.alegacao)}</q></div>
       <div class="carimbo v-${vcls(v)}">${esc(v)}<small>${esc(SUB[v]||'')}</small></div>
@@ -378,11 +508,19 @@ function mostrar(r, rolar){
     <div class="sec"><h3>Sinais analisados</h3><div class="grade">${dados}</div></div>
     ${midia}
     <div class="sec"><h3>Investigue mais</h3><div class="chips">${(r.verificar_tambem||[]).map(b=>`<a class="chip" href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.nome)} ↗</a>`).join('')}</div></div>
+    <div class="sec"><h3>Essa verificação ajudou?</h3>
+      <div class="fb" id="fb">
+        <button type="button" data-t="util">👍 Útil <span>${fb.util||0}</span></button>
+        <button type="button" data-t="errado">⚠️ Resultado errado / remover <span>${fb.errado||0}</span></button>
+        <small id="fb-msg"></small>
+        <textarea id="fb-com" placeholder="O que está errado? Se tiver uma fonte, cole o link. Se o conteúdo tem dados pessoais, peça a remoção aqui."></textarea>
+        <button type="button" id="fb-enviar" hidden>Enviar comentário</button>
+      </div></div>
     <div class="compartilhar">
       <span class="rot">Avise o grupo com o resultado:</span>
       <a class="bt bt-zap" id="zap" target="_blank" rel="noopener">WhatsApp</a>
-      <button class="bt bt-cl" id="copiar">Copiar link</button>
-      <button class="bt bt-gh" id="nova">Nova verificação</button>
+      <button class="bt bt-cl" id="copiar" type="button">Copiar link</button>
+      <button class="bt bt-gh" id="nova" type="button">Nova verificação</button>
     </div>
   </article>`;
   $('#dossie').classList.add('on');
@@ -395,36 +533,81 @@ function mostrar(r, rolar){
           else { await navigator.clipboard.writeText(link); toast('Link copiado.'); } }
     catch(_) { prompt('Copie o link:', link); }
   };
-  $('#nova').onclick = () => { $('#texto').value=''; $('#anexo-x').click(); $('#dossie').classList.remove('on'); $('#processo').classList.remove('on'); window.scrollTo({top:0,behavior:'smooth'}); $('#texto').focus(); };
+  $('#nova').onclick = () => { $('#texto').value=''; limparAnexo(); $('#dossie').classList.remove('on'); $('#processo').classList.remove('on'); history.replaceState(null,'',location.pathname); window.scrollTo({top:0,behavior:'smooth'}); $('#texto').focus(); };
+  document.querySelectorAll('#fb button[data-t]').forEach(b => b.onclick = () => avaliar(r.id, b.dataset.t, b));
+  $('#fb-enviar').onclick = () => avaliar(r.id, 'errado', null, $('#fb-com').value.trim());
   history.replaceState(null, '', '#v=' + r.id);
   if (rolar) $('#dossie').scrollIntoView({behavior:'smooth', block:'start'});
 }
 
-async function carregarPainel(){
+async function avaliar(id, tipo, btn, comentario){
+  if (tipo === 'errado' && comentario === undefined) {
+    $('#fb-com').classList.add('on'); $('#fb-enviar').hidden = false; $('#fb-com').focus(); return;
+  }
   try {
-    const [h, s] = await Promise.all([fetch(`${API}/api/history?limit=8`).then(r=>r.json()), fetch(`${API}/api/stats`).then(r=>r.json())]);
-    if (h.length) $('#hist').innerHTML = h.map(i => `<li data-id="${esc(i.id)}" tabindex="0">
-      <span class="q" style="background:${COR[i.veredito]||COR['SEM EVIDÊNCIA']}"></span>
-      <span class="t" title="${esc(i.alegacao)}">${esc(i.alegacao)}</span><time>${esc(i.veredito)}</time></li>`).join('');
-    document.querySelectorAll('#hist li[data-id]').forEach(li => { const go=()=>abrir(li.dataset.id); li.onclick=go; li.onkeydown=e=>{if(e.key==='Enter')go();}; });
-    const tot = Math.max(1, s.total);
-    $('#placar').innerHTML = ['FALSO','ENGANOSO','VERDADEIRO','SEM EVIDÊNCIA'].map(v => `<div><span>${v.charAt(0)+v.slice(1).toLowerCase()}</span>
-      <span class="b"><i style="width:${(s[v]/tot*100).toFixed(0)}%;background:${COR[v]}"></i></span><b>${s[v]}</b></div>`).join('')
-      + `<p class="vazio" style="margin-top:6px">${s.total} verificaç${s.total===1?'ão':'ões'} no total</p>`;
-  } catch(_) {}
+    const r = await fetch(`${API}/api/analysis/${id}/feedback`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({tipo, comentario: comentario||''})});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail);
+    const c = j.contagem || {};
+    document.querySelector('#fb button[data-t="util"] span').textContent = c.util||0;
+    document.querySelector('#fb button[data-t="errado"] span').textContent = c.errado||0;
+    $('#fb-msg').textContent = j.repetido ? 'Você já avaliou esta verificação.' : 'Obrigado! Sua avaliação foi registrada.';
+    $('#fb-com').classList.remove('on'); $('#fb-enviar').hidden = true;
+    if (btn) btn.classList.add('on');
+  } catch(e) { $('#fb-msg').textContent = e.message || 'Não foi possível registrar agora.'; }
 }
+
+// ── acervo público
+let pagina = 1;
+async function carregarAcervo(p){
+  if (p) pagina = p;
+  const q = $('#q').value.trim(), ver = $('#f-veredito').value, tipo = $('#f-tipo').value;
+  const params = new URLSearchParams({q, veredito: ver, tipo, page: pagina, per_page: 12});
+  const {json} = await getJSON(`${API}/api/search?${params}`, 2);
+  if (!json) { $('#hist').innerHTML = '<li class="vaz"><span class="t">Não foi possível carregar o acervo agora. Recarregue a página em instantes.</span></li>'; return; }
+  const filtro = q || ver || tipo;
+  $('#res-info').textContent = json.total ? `${json.total} verificaç${json.total===1?'ão':'ões'}${filtro?' encontradas':' no acervo'} · página ${json.page} de ${json.pages}` : '';
+  $('#hist').innerHTML = json.itens.length ? json.itens.map(i => `<li data-id="${esc(i.id)}" tabindex="0" role="link">
+      <span class="q" style="background:${COR[i.veredito]||COR['SEM EVIDÊNCIA']}"></span>
+      <span class="t" title="${esc(i.alegacao)}">${esc(i.alegacao)}</span>
+      <span class="tipo">${esc(TIPO[i.input_type]||'')}</span>
+      <time datetime="${esc(i.created_at)}">${esc(fmtData(i.created_at))}</time>
+      <time class="vtag" style="min-width:84px;text-align:right">${esc(i.veredito)}</time></li>`).join('')
+    : `<li class="vaz"><span class="t">${filtro ? 'Nada encontrado no acervo. Cole o conteúdo lá em cima para verificar agora — ele passa a fazer parte da consulta.' : 'Nenhuma verificação ainda. Teste um dos exemplos acima.'}</span></li>`;
+  document.querySelectorAll('#hist li[data-id]').forEach(li => { const go=()=>abrir(li.dataset.id); li.onclick=go; li.onkeydown=e=>{if(e.key==='Enter')go();}; });
+  $('#pag').innerHTML = json.pages > 1 ? `<button type="button" ${json.page<=1?'disabled':''} data-p="${json.page-1}">← Anteriores</button><button type="button" ${json.page>=json.pages?'disabled':''} data-p="${json.page+1}">Mais antigas →</button>` : '';
+  document.querySelectorAll('#pag button').forEach(b => b.onclick = () => { carregarAcervo(+b.dataset.p); $('#consulta').scrollIntoView({behavior:'smooth'}); });
+}
+async function carregarPlacar(){
+  const {json:s} = await getJSON(`${API}/api/stats`, 2);
+  if (!s) return;
+  const tot = Math.max(1, s.total);
+  $('#placar').innerHTML = ['FALSO','ENGANOSO','VERDADEIRO','SEM EVIDÊNCIA'].map(v => `<div><span>${v.charAt(0)+v.slice(1).toLowerCase()}</span>
+    <span class="b"><i style="width:${(s[v]/tot*100).toFixed(0)}%;background:${COR[v]}"></i></span><b>${s[v]}</b></div>`).join('')
+    + `<p class="vazio" style="margin-top:6px">${s.total} verificaç${s.total===1?'ão':'ões'} no acervo · ${s.hoje||0} hoje</p>`;
+}
+let tBusca;
+$('#form-busca').addEventListener('submit', e => { e.preventDefault(); carregarAcervo(1); });
+$('#q').addEventListener('input', () => { clearTimeout(tBusca); tBusca = setTimeout(() => carregarAcervo(1), 350); });
+$('#f-veredito').addEventListener('change', () => carregarAcervo(1));
+$('#f-tipo').addEventListener('change', () => carregarAcervo(1));
+
 async function abrir(id){
-  try { const r = await fetch(`${API}/api/analysis/${id}`); if (!r.ok) throw 0; erro(''); $('#processo').classList.remove('on'); mostrar(await r.json(), true); }
-  catch(_) { toast('Não foi possível abrir essa verificação.'); }
+  const {status, json} = await getJSON(`${API}/api/analysis/${id}`, 2);
+  if (!json || status >= 400) { toast('Não foi possível abrir essa verificação.'); return; }
+  erro(''); $('#processo').classList.remove('on'); mostrar(json, true);
 }
 async function saude(){
   const el = $('#status');
-  try { const r = await fetch(`${API}/api/health`); const j = await r.json();
+  try { const r = await fetch(`${API}/api/health`, {cache:'no-store'}); const j = await r.json();
+    if (j.limites) LIM = j.limites;
     el.className='status on'; el.querySelector('span').textContent = 'online · grátis' + (j.recursos?.llm ? ' · IA ativa' : '');
-  } catch(_) { el.className='status off'; el.querySelector('span').textContent='servidor offline'; }
+  } catch(_) { el.className='status off'; el.querySelector('span').textContent='servidor acordando…'; }
 }
-saude(); carregarPainel(); setInterval(saude, 30000);
-const m = location.hash.match(/v=([a-f0-9]+)/); if (m) abrir(m[1]);
+function carregarPainel(){ carregarAcervo(); carregarPlacar(); }
+saude(); carregarPainel(); setInterval(saude, 60000);
+const mh = location.hash.match(/v=([a-f0-9]+)/); if (mh) abrir(mh[1]);
+const mq = new URLSearchParams(location.search).get('q'); if (mq) { $('#q').value = mq; carregarAcervo(1); }
 </script>
 </body>
 </html>

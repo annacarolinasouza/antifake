@@ -1,4 +1,4 @@
-# Antifake 2.0 — checagem de fatos gratuita
+# Antifake 3.0 — consulta pública e gratuita de checagem de fatos
 
 Cole um **texto**, um **link**, uma **foto** ou um **vídeo**. O Antifake lê o conteúdo, pesquisa em agências de checagem e na imprensa, e devolve um veredito (**FALSO · ENGANOSO · VERDADEIRO · SEM EVIDÊNCIA**) com os motivos e as fontes.
 
@@ -31,6 +31,18 @@ Ou, com o repositório já no GitHub, use o botão (troque `SEU-USUARIO/SEU-REPO
 - **Oracle Cloud Always Free / qualquer VPS:** `docker compose up -d`.
 
 > No plano gratuito do Render o servidor dorme após 15 min sem acesso (a próxima visita leva ~1 min para acordar) e o histórico é apagado quando ele reinicia, porque o disco não é persistente.
+
+## Banco de dados (para guardar as consultas)
+- **Com `DATABASE_URL`** (recomendado): usa PostgreSQL. O [Neon](https://neon.tech) tem plano grátis que não expira (0,5 GB, cabe dezenas de milhares de verificações). Tudo fica no banco: verificações, fotos reduzidas, quadros dos vídeos e avaliações.
+- **Sem `DATABASE_URL`**: usa SQLite local (bom para testar no computador; no Render grátis é apagado a cada reinício).
+
+## Recursos de consulta pública
+- **Acervo pesquisável** (`/api/search?q=pix&veredito=FALSO&tipo=video`) com filtros e paginação.
+- **Página pública por verificação** (`/v/{id}`) com imagem de prévia para WhatsApp/redes (`/og/{id}.png`) e marcação ClaimReview.
+- **Avaliação "Útil / Resultado errado"** com comentário; moderação em `/api/admin/feedback?token=ADMIN_TOKEN` e `POST /api/admin/hide/{id}?token=...`.
+- **Privacidade**: caixa "mostrar na consulta pública" (desmarque para conteúdos com dados pessoais); IP não é guardado (só um hash para evitar voto duplicado).
+- **Anti-abuso**: limite de verificações por aparelho (`RATE_CHECKS`, padrão 15 a cada 10 min).
+- **Servidor acordado**: com `PUBLIC_URL` definido, o próprio servidor se "cutuca" a cada 10 min para não dormir no plano grátis.
 
 ## O que acontece em cada verificação
 

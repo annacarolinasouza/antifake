@@ -1,4 +1,4 @@
-# Deploy gratuito no Render (Blueprint). Plano free: 512 MB RAM, dorme após 15 min sem acesso.
+# Deploy gratuito no Render (Blueprint). Plano free: 512 MB RAM.
 services:
   - type: web
     name: antifake
@@ -8,13 +8,15 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      - key: DATABASE_URL        # cole a connection string do Neon (grátis)
+        sync: false
+      - key: PUBLIC_URL          # ex.: https://antifake-xxxx.onrender.com
+        sync: false
+      - key: ADMIN_TOKEN
+        generateValue: true
       - key: WHISPER_MODEL
         value: tiny
       - key: VIDEO_MAX_SECONDS
         value: "90"
       - key: MAX_UPLOAD_MB
         value: "40"
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GOOGLE_FACTCHECK_KEY
-        sync: false

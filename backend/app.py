@@ -50,8 +50,8 @@ import feedparser
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from collections import deque, OrderedDict
 
 # ──────────────────────────────────────────────────────────────────
 # Configuração
@@ -59,9 +59,14 @@ from fastapi.staticfiles import StaticFiles
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND = BASE_DIR.parent / "frontend" / "index.html"
 DATA_DIR = Path(os.getenv("ANTIFAKE_DATA", BASE_DIR / "data"))
-MEDIA_DIR = DATA_DIR / "media"
-MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+TMP_DIR = Path(tempfile.gettempdir()) / "antifake"
+TMP_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "antifake.db"
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+USE_PG = DATABASE_URL.startswith(("postgres://", "postgresql://"))
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+RATE_CHECKS = int(os.getenv("RATE_CHECKS", "15"))      # verificações por IP a cada 10 min
 
 GOOGLE_FACTCHECK_KEY = os.getenv("GOOGLE_FACTCHECK_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -214,45 +219,160 @@ def is_reliable(url: str) -> bool:
 
 
 # ──────────────────────────────────────────────────────────────────
-# Persistência (SQLite)
+# Persistência: PostgreSQL (DATABASE_URL, ex.: Neon grátis) ou SQLite local
 # ──────────────────────────────────────────────────────────────────
-def db():
-    conn = sqlite3.connect(DB_PATH)
+_POOL = None
+
+
+def _pg_pool():
+    global _POOL
+    if _POOL is None:
+        from psycopg_pool import ConnectionPool
+
+        _POOL = ConnectionPool(DATABASE_URL, min_size=1, max_size=4, timeout=20,
+                               check=ConnectionPool.check_connection, open=True,
+                               kwargs={"autocommit": True, "prepare_threshold": None})
+    return _POOL
+
+
+def sql(query: str, params: tuple = (), fetch: str | None = None):
+    """Executa SQL nos dois bancos. Use '?' como marcador. fetch: None | 'one' | 'all'."""
+    if USE_PG:
+        from psycopg.rows import dict_row
+
+        q = query.replace("?", "%s")
+        with _pg_pool().connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(q, params)
+                if fetch == "one":
+                    return cur.fetchone()
+                if fetch == "all":
+                    return cur.fetchall()
+                return None
+    conn = sqlite3.connect(DB_PATH, timeout=20)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        cur = conn.execute(query, params)
+        if fetch == "one":
+            r = cur.fetchone()
+            return dict(r) if r else None
+        if fetch == "all":
+            return [dict(r) for r in cur.fetchall()]
+        conn.commit()
+        return None
+    finally:
+        conn.close()
 
 
-with db() as _c:
-    _c.execute("""CREATE TABLE IF NOT EXISTS analyses(
+def init_db():
+    blob = "BYTEA" if USE_PG else "BLOB"
+    sql("""CREATE TABLE IF NOT EXISTS analyses(
         id TEXT PRIMARY KEY, created_at TEXT, input_type TEXT, input_ref TEXT,
         input_hash TEXT, alegacao TEXT, veredito TEXT, confianca INTEGER, data TEXT)""")
-    _c.execute("CREATE INDEX IF NOT EXISTS ix_hash ON analyses(input_hash)")
+    for col, typ in (("publico", "INTEGER DEFAULT 1"), ("busca", "TEXT DEFAULT ''")):
+        try:
+            sql(f"ALTER TABLE analyses ADD COLUMN {col} {typ}")
+        except Exception:
+            pass
+    sql(f"""CREATE TABLE IF NOT EXISTS media(
+        name TEXT PRIMARY KEY, analysis_id TEXT, mime TEXT, content {blob}, created_at TEXT)""")
+    sql("""CREATE TABLE IF NOT EXISTS feedback(
+        id TEXT PRIMARY KEY, analysis_id TEXT, created_at TEXT, tipo TEXT, comentario TEXT, ip_hash TEXT)""")
+    for ix in ("CREATE INDEX IF NOT EXISTS ix_hash ON analyses(input_hash)",
+               "CREATE INDEX IF NOT EXISTS ix_created ON analyses(created_at)",
+               "CREATE INDEX IF NOT EXISTS ix_veredito ON analyses(veredito)",
+               "CREATE INDEX IF NOT EXISTS ix_fb ON feedback(analysis_id)",
+               "CREATE INDEX IF NOT EXISTS ix_media ON media(analysis_id)"):
+        sql(ix)
+
+
+def texto_busca(rec: dict) -> str:
+    m = rec.get("midia") or {}
+    partes = [rec.get("alegacao", ""), rec.get("input_ref", ""), (rec.get("pagina") or {}).get("titulo") or "",
+              (m.get("ocr") or "")[:600], (m.get("transcricao") or "")[:800], (m.get("ocr_quadros") or "")[:400]]
+    return " " + re.sub(r"\s+", " ", norm(" ".join(p for p in partes if p))) + " "
 
 
 def save(rec: dict):
-    with db() as c:
-        c.execute("INSERT OR REPLACE INTO analyses VALUES (?,?,?,?,?,?,?,?,?)",
-                  (rec["id"], rec["created_at"], rec["input_type"], rec["input_ref"][:500],
-                   rec["input_hash"], rec["alegacao"], rec["veredito"], rec["confianca"],
-                   json.dumps(rec, ensure_ascii=False)))
+    params = (rec["id"], rec["created_at"], rec["input_type"], rec["input_ref"][:500], rec["input_hash"],
+              rec["alegacao"], rec["veredito"], rec["confianca"], json.dumps(rec, ensure_ascii=False),
+              1 if rec.get("publico", True) else 0, texto_busca(rec))
+    sql("""INSERT INTO analyses(id, created_at, input_type, input_ref, input_hash, alegacao, veredito,
+           confianca, data, publico, busca) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT (id) DO UPDATE SET data = excluded.data, veredito = excluded.veredito,
+           confianca = excluded.confianca, publico = excluded.publico, busca = excluded.busca""", params)
 
 
 def load(aid: str) -> dict:
-    with db() as c:
-        row = c.execute("SELECT data FROM analyses WHERE id=?", (aid,)).fetchone()
+    if not re.fullmatch(r"[a-f0-9]{6,32}", aid or ""):
+        raise HTTPException(404, "Análise não encontrada")
+    row = sql("SELECT data FROM analyses WHERE id=?", (aid,), "one")
     if not row:
         raise HTTPException(404, "Análise não encontrada")
-    return json.loads(row["data"])
+    rec = json.loads(row["data"])
+    rec["feedback"] = feedback_counts(aid)
+    return rec
 
 
-def cached(input_hash: str, max_age_h: int = 12) -> dict | None:
-    with db() as c:
-        row = c.execute("SELECT data, created_at FROM analyses WHERE input_hash=? "
-                        "ORDER BY created_at DESC LIMIT 1", (input_hash,)).fetchone()
+def cached(input_hash: str, max_age_h: int = 24) -> dict | None:
+    row = sql("SELECT data, created_at FROM analyses WHERE input_hash=? ORDER BY created_at DESC LIMIT 1",
+              (input_hash,), "one")
     if not row:
         return None
     age = datetime.now(timezone.utc) - datetime.fromisoformat(row["created_at"])
     return json.loads(row["data"]) if age.total_seconds() < max_age_h * 3600 else None
+
+
+def media_put(name: str, aid: str, mime: str, content: bytes):
+    sql("""INSERT INTO media(name, analysis_id, mime, content, created_at) VALUES (?,?,?,?,?)
+           ON CONFLICT (name) DO NOTHING""", (name, aid, mime, content, now_iso()))
+
+
+def media_get(name: str):
+    return sql("SELECT mime, content FROM media WHERE name=?", (name,), "one")
+
+
+def feedback_counts(aid: str) -> dict:
+    rows = sql("SELECT tipo, COUNT(*) AS n FROM feedback WHERE analysis_id=? GROUP BY tipo", (aid,), "all") or []
+    d = {"util": 0, "errado": 0}
+    d.update({r["tipo"]: int(r["n"]) for r in rows})
+    return d
+
+
+def thumb_jpeg(img, max_side: int = 1280, quality: int = 80) -> bytes:
+    from PIL import Image
+
+    im = img.convert("RGB")
+    im.thumbnail((max_side, max_side), Image.LANCZOS)
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=quality, optimize=True, progressive=True)
+    return buf.getvalue()
+
+
+init_db()
+
+# ──────────────────────────────────────────────────────────────────
+# Limite de uso por IP (anti-abuso) — em memória
+# ──────────────────────────────────────────────────────────────────
+_RATE: dict = {}
+
+
+def client_ip(req: Request) -> str:
+    xff = req.headers.get("x-forwarded-for", "")
+    return (xff.split(",")[0].strip() if xff else (req.client.host if req.client else "?")) or "?"
+
+
+def rate_ok(key: str, limit: int, window_s: int) -> bool:
+    now = time.time()
+    dq = _RATE.setdefault(key, deque())
+    while dq and dq[0] < now - window_s:
+        dq.popleft()
+    if len(dq) >= limit:
+        return False
+    dq.append(now)
+    if len(_RATE) > 20000:
+        _RATE.clear()
+    return True
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -393,7 +513,7 @@ def analisar_imagem(path: Path) -> dict:
         pass
     texto = _ocr(img.convert("RGB"))
     return {"largura": img.width, "altura": img.height, "formato": img.format or "",
-            "exif": exif, "ocr": texto}
+            "exif": exif, "ocr": texto, "_thumb": thumb_jpeg(img)}
 
 
 _WHISPER = None
@@ -444,17 +564,21 @@ def processar_video(path: Path, aid: str) -> dict:
     ocrs = []
     for i, frac in enumerate((0.1, 0.35, 0.6, 0.85)):
         name = f"{aid}_q{i}.jpg"
-        dest = MEDIA_DIR / name
+        dest = TMP_DIR / name
         subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{dur * frac:.2f}", "-i", str(path),
                         "-frames:v", "1", "-vf", "scale='min(960,iw)':-2", "-q:v", "3", str(dest)], timeout=60)
         if dest.exists():
-            out["quadros"].append(name)
             try:
-                t = _ocr(Image.open(dest).convert("RGB"))
+                fr = Image.open(dest).convert("RGB")
+                media_put(name, aid, "image/jpeg", thumb_jpeg(fr, 720, 72))
+                out["quadros"].append(name)
+                t = _ocr(fr)
                 if t:
                     ocrs.append(t)
             except Exception:
                 pass
+            finally:
+                dest.unlink(missing_ok=True)
     # remove linhas repetidas entre quadros
     seen, lines = set(), []
     for t in ocrs:
@@ -905,7 +1029,10 @@ def links_busca_reversa(img_url: str) -> list:
             {"nome": "Bing", "url": f"https://www.bing.com/images/search?view=detailv2&iss=sbi&q=imgurl:{u}"}]
 
 
-async def executar(job: Job, texto: str, arquivo: tuple | None, burl: str):
+MEDIA_SEM = asyncio.Semaphore(int(os.getenv("MEDIA_CONCURRENCY", "1")))
+
+
+async def executar(job: Job, texto: str, arquivo: tuple | None, burl: str, publico: bool = True):
     aid = job.id
     try:
         tipo, ref, titulo, corpo = "texto", "", "", ""
@@ -926,6 +1053,9 @@ async def executar(job: Job, texto: str, arquivo: tuple | None, burl: str):
         if hit:
             job.step("cache", "Já verificamos este conteúdo recentemente", "ok",
                      "Reaproveitando a análise para responder na hora.")
+            if publico and not hit.get("publico", True):
+                hit["publico"] = True
+                save(hit)
             job.result, job.status = hit, "done"
             return
 
@@ -933,41 +1063,50 @@ async def executar(job: Job, texto: str, arquivo: tuple | None, burl: str):
         if arquivo:
             fname, ctype, data = arquivo
             ext = (Path(fname).suffix or "").lower()[:6]
-            is_video = (ctype or "").startswith("video") or ext in (".mp4", ".mov", ".webm", ".mkv", ".avi", ".3gp")
-            stored = MEDIA_DIR / f"{aid}{ext or ('.mp4' if is_video else '.jpg')}"
+            is_video = (ctype or "").startswith("video") or ext in (".mp4", ".mov", ".webm", ".mkv", ".avi", ".3gp", ".m4v")
+            stored = TMP_DIR / f"{aid}{ext or ('.mp4' if is_video else '.jpg')}"
             stored.write_bytes(data)
             ref = fname
-            if is_video:
-                tipo = "video"
-                job.step("media", "Extraindo áudio e quadros do vídeo")
-                job.step("asr", "Transcrevendo a fala (Whisper local)", "wait")
-                v = await asyncio.to_thread(processar_video, stored, aid)
-                job.done("media", f"{v.get('duracao') or '?'} s · {len(v['quadros'])} quadros")
-                job.done("asr", (f"{len(v['transcricao'].split())} palavras transcritas"
-                                 if v["transcricao"] else "sem fala detectada"),
-                         "ok" if v["transcricao"] else "warn")
-                midia = {"tipo": "video", "arquivo": f"/media/{stored.name}", **v,
-                         "quadros": [f"/media/{q}" for q in v["quadros"]],
-                         "busca_reversa": links_busca_reversa(f"{burl}/media/{v['quadros'][1]}")
-                         if len(v["quadros"]) > 1 else []}
-                corpo = "\n".join(x for x in (v["transcricao"], v["ocr_quadros"]) if x)
+            if MEDIA_SEM.locked():
+                job.step("fila", "Aguardando a vez (outra mídia está sendo analisada)", "wait")
+            async with MEDIA_SEM:
+                job.done("fila", "pronto")
                 try:
-                    stored.unlink()  # não guardamos o vídeo original
-                    midia["arquivo"] = ""
-                except Exception:
-                    pass
-            else:
-                tipo = "imagem"
-                job.step("ocr", "Lendo o texto da imagem (OCR)")
-                im = await asyncio.to_thread(analisar_imagem, stored)
-                job.done("ocr", f"{len(im['ocr'].split())} palavras lidas" if im["ocr"] else
-                         "nenhum texto legível", "ok" if im["ocr"] else "warn")
-                job.step("meta", "Checando metadados e preparando busca reversa", "ok",
-                         ("EXIF: " + ", ".join(f"{k}={v}" for k, v in im["exif"].items()))
-                         if im["exif"] else "sem metadados (comum em imagens de WhatsApp/redes)")
-                midia = {"tipo": "imagem", "arquivo": f"/media/{stored.name}", **im,
-                         "busca_reversa": links_busca_reversa(f"{burl}/media/{stored.name}")}
-                corpo = im["ocr"]
+                    if is_video:
+                        tipo = "video"
+                        job.step("media", "Extraindo áudio e quadros do vídeo")
+                        job.step("asr", "Transcrevendo a fala", "wait")
+                        v = await asyncio.to_thread(processar_video, stored, aid)
+                        if not v["quadros"] and not v["transcricao"] and v.get("duracao") is None:
+                            raise ValueError("Não conseguimos abrir esse vídeo. Envie em MP4, MOV ou WEBM.")
+                        job.done("media", f"{v.get('duracao') or '?'} s · {len(v['quadros'])} quadros")
+                        job.done("asr", (f"{len(v['transcricao'].split())} palavras transcritas"
+                                         if v["transcricao"] else "sem fala detectada"),
+                                 "ok" if v["transcricao"] else "warn")
+                        midia = {"tipo": "video", "arquivo": "", **v,
+                                 "quadros": [f"/media/{q}" for q in v["quadros"]],
+                                 "busca_reversa": links_busca_reversa(f"{burl}/media/{v['quadros'][min(1, len(v['quadros']) - 1)]}")
+                                 if v["quadros"] else []}
+                        corpo = "\n".join(x for x in (v["transcricao"], v["ocr_quadros"]) if x)
+                    else:
+                        tipo = "imagem"
+                        job.step("ocr", "Lendo o texto da imagem (OCR)")
+                        try:
+                            im = await asyncio.to_thread(analisar_imagem, stored)
+                        except Exception:
+                            raise ValueError("Não conseguimos abrir essa imagem. Envie em JPG, PNG ou WEBP.")
+                        job.done("ocr", f"{len(im['ocr'].split())} palavras lidas" if im["ocr"] else
+                                 "nenhum texto legível", "ok" if im["ocr"] else "warn")
+                        nome = f"{aid}.jpg"
+                        media_put(nome, aid, "image/jpeg", im.pop("_thumb"))
+                        job.step("meta", "Checando metadados e preparando busca reversa", "ok",
+                                 ("EXIF: " + ", ".join(f"{k}={v}" for k, v in im["exif"].items()))
+                                 if im["exif"] else "sem metadados (comum em imagens de WhatsApp/redes)")
+                        midia = {"tipo": "imagem", "arquivo": f"/media/{nome}", **im,
+                                 "busca_reversa": links_busca_reversa(f"{burl}/media/{nome}")}
+                        corpo = im["ocr"]
+                finally:
+                    stored.unlink(missing_ok=True)
             if texto:
                 corpo = texto + "\n" + corpo
         elif url_m:
@@ -1063,6 +1202,7 @@ async def executar(job: Job, texto: str, arquivo: tuple | None, burl: str):
                "fontes": fontes, "checagens": checagens, "sinais": sinais, "dominio": dominio,
                "pagina": {k: pagina.get(k) for k in ("titulo", "data", "autor", "site", "url_final")} if pagina else None,
                "midia": midia or None, "busca": {"query": evid["query"], "total": len(evid["itens"])},
+               "publico": bool(publico),
                "verificar_tambem": [
                    {"nome": "Google Fact Check Explorer",
                     "url": "https://toolbox.google.com/factcheck/explorer/search/" + quote(alegacao or ref) + ";hl=pt"},
@@ -1082,9 +1222,18 @@ async def executar(job: Job, texto: str, arquivo: tuple | None, burl: str):
 # ──────────────────────────────────────────────────────────────────
 # 6) APP / ROTAS
 # ──────────────────────────────────────────────────────────────────
-app = FastAPI(title="Antifake API", version="2.0.0")
+app = FastAPI(title="Antifake API", version="3.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
+
+
+@app.middleware("http")
+async def headers_seguranca(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if request.url.path == "/" or request.url.path.startswith("/api/"):
+        resp.headers.setdefault("Cache-Control", "no-store")
+    return resp
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1092,33 +1241,59 @@ def index():
     return FileResponse(FRONTEND)
 
 
+@app.get("/media/{name}")
+def media(name: str):
+    if not re.fullmatch(r"[a-f0-9]{6,32}(_q\d)?\.jpg", name):
+        raise HTTPException(404, "Arquivo não encontrado")
+    row = media_get(name)
+    if not row:
+        raise HTTPException(404, "Arquivo não encontrado")
+    return Response(bytes(row["content"]), media_type=row["mime"] or "image/jpeg",
+                    headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": app.version, "custo": "gratuito",
+    banco = "PostgreSQL" if USE_PG else "SQLite (local)"
+    try:
+        sql("SELECT 1", (), "one")
+        banco_ok = True
+    except Exception:
+        banco_ok = False
+    return {"status": "ok" if banco_ok else "degradado", "version": app.version, "custo": "gratuito",
+            "banco": banco, "banco_ok": banco_ok, "persistente": USE_PG,
+            "limites": {"max_upload_mb": MAX_UPLOAD_MB, "video_max_s": VIDEO_MAX_SECONDS},
             "recursos": {"ocr": bool(shutil.which("tesseract")), "video": bool(shutil.which("ffmpeg")),
-                         "transcricao": True, "busca": "Google Notícias RSS + DuckDuckGo + Bing",
-                         "fact_check_api": bool(GOOGLE_FACTCHECK_KEY), "llm": llm_nome()}}
+                         "transcricao": True, "fact_check_api": bool(GOOGLE_FACTCHECK_KEY), "llm": llm_nome()}}
 
 
 @app.post("/api/check")
-async def check(request: Request, text: str = Form(""), file: UploadFile | None = File(None)):
+async def check(request: Request, text: str = Form(""), file: UploadFile | None = File(None),
+                publico: str = Form("1")):
     gc_jobs()
+    ip = client_ip(request)
+    if not rate_ok("check:" + ip, RATE_CHECKS, 600):
+        raise HTTPException(429, "Muitas verificações seguidas deste aparelho. Aguarde alguns minutos e tente de novo.")
+    if len(text) > 20000:
+        text = text[:20000]
     arquivo = None
     if file is not None and file.filename:
         data = await file.read()
         if len(data) > MAX_UPLOAD_MB * 1024 * 1024:
-            raise HTTPException(413, f"Arquivo maior que {MAX_UPLOAD_MB} MB.")
+            raise HTTPException(413, f"Arquivo maior que {MAX_UPLOAD_MB} MB. Envie um trecho menor do vídeo.")
         if not data:
-            raise HTTPException(422, "Arquivo vazio.")
-        ctype = file.content_type or ""
-        if not (ctype.startswith("image") or ctype.startswith("video")
-                or Path(file.filename).suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".heic", ".mp4", ".mov", ".webm")):
-            raise HTTPException(415, "Envie uma imagem (JPG, PNG, WEBP) ou um vídeo (MP4, MOV, WEBM).")
+            raise HTTPException(422, "O arquivo chegou vazio. Tente anexar de novo.")
+        ctype = (file.content_type or "").lower()
+        ext = Path(file.filename).suffix.lower()
+        ok_ext = (".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".gif", ".bmp",
+                  ".mp4", ".mov", ".webm", ".m4v", ".3gp", ".mkv", ".avi")
+        if not (ctype.startswith("image") or ctype.startswith("video") or ext in ok_ext):
+            raise HTTPException(415, "Envie uma imagem (JPG, PNG, WEBP, HEIC) ou um vídeo (MP4, MOV, WEBM).")
         arquivo = (file.filename, ctype, data)
     if not text.strip() and not arquivo:
         raise HTTPException(422, "Cole um texto ou link, ou envie uma imagem/vídeo.")
     job = Job()
-    asyncio.create_task(executar(job, text, arquivo, base_url(request)))
+    asyncio.create_task(executar(job, text, arquivo, base_url(request), publico not in ("0", "false", "nao")))
     return {"job": job.id}
 
 
@@ -1126,7 +1301,8 @@ async def check(request: Request, text: str = Form(""), file: UploadFile | None 
 def check_status(job_id: str):
     job = JOBS.get(job_id)
     if not job:
-        raise HTTPException(404, "Verificação não encontrada (pode ter expirado).")
+        raise HTTPException(404, "Essa verificação não está mais em andamento (o servidor pode ter reiniciado). "
+                                 "Envie de novo.")
     return job.public()
 
 
@@ -1135,25 +1311,220 @@ def analysis(aid: str):
     return load(aid)
 
 
+LISTA_COLS = "id, created_at, input_type, alegacao, veredito, confianca"
+
+
 @app.get("/api/history")
 def history(limit: int = 12):
-    with db() as c:
-        rows = c.execute("SELECT id, created_at, input_type, alegacao, veredito, confianca "
-                         "FROM analyses ORDER BY created_at DESC LIMIT ?", (min(limit, 50),)).fetchall()
-    return [dict(r) for r in rows]
+    return sql(f"SELECT {LISTA_COLS} FROM analyses WHERE publico=1 AND alegacao <> '(sem alegação verificável)' "
+               "ORDER BY created_at DESC LIMIT ?", (max(1, min(limit, 50)),), "all") or []
+
+
+@app.get("/api/search")
+def search(q: str = "", veredito: str = "", tipo: str = "", page: int = 1, per_page: int = 15):
+    per_page = max(1, min(per_page, 50))
+    page = max(1, min(page, 200))
+    where = ["publico=1", "alegacao <> '(sem alegação verificável)'"]
+    params: list = []
+    termos = [norm(t) for t in re.findall(r"[\wÀ-ÿ%$]+", q or "") if len(t) >= 2][:8]
+    for t in termos:
+        where.append("busca LIKE ?")
+        params.append(f"%{t}%")
+    if veredito in VERDICTS:
+        where.append("veredito=?")
+        params.append(veredito)
+    if tipo in ("texto", "link", "imagem", "video"):
+        where.append("input_type=?")
+        params.append(tipo)
+    w = " AND ".join(where)
+    total = int((sql(f"SELECT COUNT(*) AS n FROM analyses WHERE {w}", tuple(params), "one") or {"n": 0})["n"])
+    rows = sql(f"SELECT {LISTA_COLS} FROM analyses WHERE {w} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+               tuple(params) + (per_page, (page - 1) * per_page), "all") or []
+    return {"total": total, "page": page, "per_page": per_page,
+            "pages": max(1, -(-total // per_page)), "itens": rows}
 
 
 @app.get("/api/stats")
 def stats():
-    with db() as c:
-        rows = c.execute("SELECT veredito, COUNT(*) n FROM analyses GROUP BY veredito").fetchall()
+    pub = "publico=1 AND alegacao <> '(sem alegação verificável)'"
+    rows = sql(f"SELECT veredito, COUNT(*) AS n FROM analyses WHERE {pub} GROUP BY veredito", (), "all") or []
     d = {v: 0 for v in VERDICTS}
-    d.update({r["veredito"]: r["n"] for r in rows})
+    d.update({r["veredito"]: int(r["n"]) for r in rows})
     d["total"] = sum(d[v] for v in VERDICTS)
+    hoje = datetime.now(timezone.utc).date().isoformat()
+    d["hoje"] = int((sql(f"SELECT COUNT(*) AS n FROM analyses WHERE {pub} AND created_at >= ?",
+                         (hoje,), "one") or {"n": 0})["n"])
     return d
 
 
+@app.post("/api/analysis/{aid}/feedback")
+async def feedback(aid: str, request: Request):
+    load(aid)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    tipo = body.get("tipo")
+    if tipo not in ("util", "errado"):
+        raise HTTPException(422, "Tipo de avaliação inválido.")
+    ip = client_ip(request)
+    if not rate_ok("fb:" + ip, 20, 3600):
+        raise HTTPException(429, "Muitas avaliações seguidas. Tente mais tarde.")
+    iph = hashlib.sha256((ip + aid).encode()).hexdigest()[:24]
+    if sql("SELECT id FROM feedback WHERE analysis_id=? AND ip_hash=?", (aid, iph), "one"):
+        return {"ok": True, "repetido": True, "contagem": feedback_counts(aid)}
+    sql("INSERT INTO feedback(id, analysis_id, created_at, tipo, comentario, ip_hash) VALUES (?,?,?,?,?,?)",
+        (uuid.uuid4().hex[:12], aid, now_iso(), tipo, str(body.get("comentario", ""))[:1000], iph))
+    return {"ok": True, "contagem": feedback_counts(aid)}
+
+
+@app.get("/api/admin/feedback")
+def admin_feedback(token: str = "", limit: int = 100):
+    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+        raise HTTPException(403, "Acesso negado.")
+    return sql("""SELECT f.created_at, f.tipo, f.comentario, a.id, a.veredito, a.alegacao
+                  FROM feedback f JOIN analyses a ON a.id = f.analysis_id
+                  ORDER BY f.created_at DESC LIMIT ?""", (min(limit, 500),), "all")
+
+
+@app.post("/api/admin/hide/{aid}")
+def admin_hide(aid: str, token: str = ""):
+    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+        raise HTTPException(403, "Acesso negado.")
+    rec = load(aid)
+    rec["publico"] = False
+    rec.pop("feedback", None)
+    save(rec)
+    return {"ok": True}
+
+
+@app.get("/robots.txt", response_class=Response)
+def robots():
+    return Response("User-agent: *\nAllow: /\nDisallow: /api/\n", media_type="text/plain")
+
+
+# ── keep-alive opcional: evita que o plano grátis durma (use PUBLIC_URL)
+@app.on_event("startup")
+async def _keepalive():
+    if not (PUBLIC_URL and os.getenv("KEEPALIVE", "1") == "1"):
+        return
+
+    async def loop():
+        await asyncio.sleep(60)
+        async with httpx.AsyncClient(timeout=20) as c:
+            while True:
+                try:
+                    await c.get(PUBLIC_URL + "/api/ping")
+                except Exception:
+                    pass
+                await asyncio.sleep(600)
+
+    asyncio.create_task(loop())
+
+
+@app.get("/api/ping")
+def ping():
+    return {"pong": True}
+
+
 CORES = {"FALSO": "#C8102E", "ENGANOSO": "#C77700", "VERDADEIRO": "#1E7F4F", "SEM EVIDÊNCIA": "#4A5866"}
+SUBT = {"FALSO": "não é verdade", "ENGANOSO": "distorcido ou fora de contexto",
+        "VERDADEIRO": "confirmado por fontes", "SEM EVIDÊNCIA": "não há como confirmar"}
+FONT_DIR = BASE_DIR / "fonts"
+_OG_CACHE: "OrderedDict[str, bytes]" = OrderedDict()
+
+
+def _font(nome: str, size: int, peso: str):
+    from PIL import ImageFont
+
+    try:
+        f = ImageFont.truetype(str(FONT_DIR / nome), size)
+        try:
+            f.set_variation_by_name(peso)
+        except Exception:
+            pass
+        return f
+    except Exception:
+        return ImageFont.truetype("DejaVuSans-Bold.ttf" if peso in ("Bold", "ExtraBold") else "DejaVuSans.ttf", size)
+
+
+def _wrap(draw, text, font, width, max_lines):
+    words, lines, cur = text.split(), [], ""
+    for w in words:
+        t = (cur + " " + w).strip()
+        if draw.textlength(t, font=font) <= width:
+            cur = t
+        else:
+            if cur:
+                lines.append(cur)
+            cur = w
+        if len(lines) == max_lines:
+            break
+    if cur and len(lines) < max_lines:
+        lines.append(cur)
+    if len(lines) == max_lines and " ".join(lines) != " ".join(words):
+        while lines[-1] and draw.textlength(lines[-1] + "…", font=font) > width:
+            lines[-1] = lines[-1][:-1]
+        lines[-1] = lines[-1].rstrip() + "…"
+    return lines
+
+
+def og_image(r: dict) -> bytes:
+    from PIL import Image, ImageDraw
+
+    W, H = 1200, 630
+    cor = CORES.get(r["veredito"], "#4A5866")
+    img = Image.new("RGB", (W, H), "#E6ECF1")
+    d = ImageDraw.Draw(img)
+    for x in range(0, W, 18):
+        for y in range(0, H, 18):
+            d.point((x, y), fill="#D6DEE5")
+    d.rounded_rectangle((40, 40, W - 40, H - 40), 10, fill="#FFFFFF")
+    d.rectangle((40, H - 120, W - 40, H - 40), fill="#0E1A24")
+    d.rounded_rectangle((40, H - 130, W - 40, H - 40), 10, fill="#0E1A24")
+    d.rectangle((40, H - 130, W - 40, H - 110), fill="#FFFFFF")
+    # carimbo
+    st = Image.new("RGBA", (520, 200), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(st)
+    f_st = _font("Bricolage.ttf", 84 if len(r["veredito"]) < 12 else 58, "ExtraBold")
+    tw = sd.textlength(r["veredito"], font=f_st)
+    bw = int(tw + 60)
+    sd.rounded_rectangle((10, 10, 10 + bw, 150), 12, outline=cor, width=9)
+    sd.text((10 + bw / 2, 72), r["veredito"], font=f_st, fill=cor, anchor="mm")
+    f_sub = _font("Plex.ttf", 22, "SemiBold")
+    sd.text((10 + bw / 2, 126), SUBT.get(r["veredito"], "").upper(), font=f_sub, fill=cor, anchor="mm")
+    st = st.crop((0, 0, bw + 24, 170)).rotate(6, expand=True, resample=Image.BICUBIC)
+    img.paste(st, (W - 70 - st.width, 62), st)
+    f_lab = _font("Plex.ttf", 22, "SemiBold")
+    d.text((88, 92), "ALEGAÇÃO VERIFICADA", font=f_lab, fill="#5A6875")
+    f_q = _font("Bricolage.ttf", 50, "Bold")
+    maxw = W - 88 - 80 - (st.width if st.width < 560 else 0)
+    linhas = _wrap(d, "“" + r["alegacao"] + "”", f_q, max(560, maxw), 4)
+    y = 140
+    for ln in linhas:
+        d.text((88, y), ln, font=f_q, fill="#0E1A24")
+        y += 62
+    f_c = _font("Plex.ttf", 26, "Regular")
+    d.text((88, H - 172), f"confiança {r['confianca']}%  ·  {len(r.get('checagens') or [])} checagens  ·  "
+                          f"{len(r.get('fontes') or [])} fontes", font=f_c, fill="#2D3B47")
+    f_m = _font("Bricolage.ttf", 34, "ExtraBold")
+    d.ellipse((86, H - 104, 130, H - 60), outline="#E0475E", width=4)
+    d.text((108, H - 82), "AF", font=_font("Bricolage.ttf", 17, "ExtraBold"), fill="#E0475E", anchor="mm")
+    d.text((146, H - 82), "Antifake", font=f_m, fill="#FFFFFF", anchor="lm")
+    f_f = _font("Plex.ttf", 24, "Regular")
+    d.text((W - 88, H - 82), "Recebeu? Confira antes de repassar.", font=f_f, fill="#C9D3DC", anchor="rm")
+    buf = io.BytesIO()
+    img.save(buf, "PNG", optimize=True)
+    return buf.getvalue()
+
+
+@app.get("/og/{aid}.png")
+def og(aid: str):
+    if aid not in _OG_CACHE:
+        _OG_CACHE[aid] = og_image(load(aid))
+        while len(_OG_CACHE) > 200:
+            _OG_CACHE.popitem(last=False)
+    return Response(_OG_CACHE[aid], media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/v/{aid}", response_class=HTMLResponse)
@@ -1161,34 +1532,61 @@ def share_page(aid: str, request: Request):
     r = load(aid)
     e = html.escape
     cor = CORES.get(r["veredito"], "#4A5866")
-    fontes = "".join(f'<li><a href="{e(f["url"])}" target="_blank" rel="noopener">{e(f["titulo"])}</a>'
-                     f'<span>{e(f.get("checador") or f.get("veiculo") or f.get("dominio") or "")}</span></li>'
-                     for f in r.get("fontes", [])[:6])
-    url = f"{base_url(request)}/v/{aid}"
+    fontes = "".join(f'<li><a href="{e(f["url"])}" target="_blank" rel="noopener nofollow">{e(f["titulo"])}</a>'
+                     f'<span>{e(f.get("checador") or f.get("veiculo") or f.get("dominio") or "")}'
+                     f'{" · " + e(f["classificacao"]) if f.get("classificacao") else ""}</span></li>'
+                     for f in r.get("fontes", [])[:8])
+    motivos = "".join(f"<li>{e(m)}</li>" for m in r.get("motivos", [])[:4])
+    burl = base_url(request)
+    url = f"{burl}/v/{aid}"
     titulo = f"{r['veredito']}: {r['alegacao'][:90]}"
+    data_br = datetime.fromisoformat(r["created_at"]).strftime("%d/%m/%Y")
+    ld = json.dumps({"@context": "https://schema.org", "@type": "ClaimReview", "url": url,
+                     "claimReviewed": r["alegacao"], "datePublished": r["created_at"][:10],
+                     "author": {"@type": "Organization", "name": "Antifake (verificação automatizada)"},
+                     "reviewRating": {"@type": "Rating", "alternateName": r["veredito"].title(),
+                                      "ratingValue": {"FALSO": 1, "ENGANOSO": 2, "SEM EVIDÊNCIA": 3, "VERDADEIRO": 5}.get(r["veredito"], 3),
+                                      "bestRating": 5, "worstRating": 1}}, ensure_ascii=False)
+    img = ""
+    m = r.get("midia") or {}
+    if m.get("arquivo"):
+        img = f'<img class="mid" src="{e(m["arquivo"])}" alt="Imagem verificada">'
+    elif m.get("quadros"):
+        img = f'<img class="mid" src="{e(m["quadros"][min(1, len(m["quadros"]) - 1)])}" alt="Quadro do vídeo verificado">'
     return f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} · Antifake</title>
+<meta name="description" content="{e(r['explicacao'][:180])}">
+<link rel="canonical" href="{e(url)}">
+<meta property="og:type" content="article"><meta property="og:site_name" content="Antifake">
 <meta property="og:title" content="{e(titulo)}"><meta property="og:description" content="{e(r['explicacao'][:200])}">
-<meta property="og:url" content="{e(url)}"><meta name="twitter:card" content="summary">
+<meta property="og:url" content="{e(url)}"><meta property="og:image" content="{e(burl)}/og/{aid}.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="{e(burl)}/og/{aid}.png">
+<script type="application/ld+json">{ld}</script>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 body{{margin:0;background:#E6ECF1;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#0E1A24;display:flex;justify-content:center;padding:32px 14px}}
-.c{{max-width:520px;width:100%;background:#fff;border-radius:6px;box-shadow:0 1px 0 #cfd8e0,0 18px 40px -18px rgba(14,26,36,.35);overflow:hidden}}
+.c{{max-width:560px;width:100%;background:#fff;border-radius:6px;box-shadow:0 1px 0 #cfd8e0,0 18px 40px -18px rgba(14,26,36,.35);overflow:hidden}}
 .top{{padding:26px 26px 0;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}}
 .st{{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:30px;color:{cor};border:4px solid {cor};
 padding:4px 14px;border-radius:6px;transform:rotate(-4deg);letter-spacing:.04em}}
 .cf{{font-size:12px;color:#5A6875;text-align:right}}.cf b{{display:block;font-size:22px;color:#0E1A24}}
-.b{{padding:20px 26px 26px}}.q{{font-family:'Bricolage Grotesque',sans-serif;font-size:21px;line-height:1.25;margin:6px 0 14px}}
+.b{{padding:20px 26px 26px}}.q{{font-family:'Bricolage Grotesque',sans-serif;font-size:22px;line-height:1.25;margin:6px 0 14px}}
 p{{line-height:1.6;color:#2D3B47}}h4{{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#5A6875;margin:22px 0 8px}}
 ul{{list-style:none;padding:0;margin:0}}li{{padding:8px 0;border-top:1px solid #E3E8ED;font-size:14px}}li a{{color:#1F4FD8;text-decoration:none}}
-li span{{display:block;font-size:12px;color:#5A6875}}.f{{background:#0E1A24;color:#C9D3DC;padding:14px 26px;font-size:12px;display:flex;justify-content:space-between}}
-.f a{{color:#fff}}</style></head><body><div class="c">
+li span{{display:block;font-size:12px;color:#5A6875}}ul.m li{{border:0;padding:3px 0;color:#2D3B47}}
+.mid{{max-width:100%;max-height:280px;border-radius:6px;border:1px solid #E3E8ED;display:block;margin-top:6px}}
+.f{{background:#0E1A24;color:#C9D3DC;padding:14px 26px;font-size:13px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}}
+.f a{{color:#fff;font-weight:600}}.av{{font-size:12px;color:#5A6875;margin-top:18px}}</style></head><body><main class="c">
 <div class="top"><span class="st">{e(r['veredito'])}</span><div class="cf"><b>{r['confianca']}%</b>confiança</div></div>
-<div class="b"><h4>Alegação</h4><div class="q">“{e(r['alegacao'])}”</div><p>{e(r['explicacao'])}</p>
-{'<h4>Fontes</h4><ul>' + fontes + '</ul>' if fontes else ''}</div>
-<div class="f"><span>Verificado em {r['created_at'][:10]}</span><a href="/">Verificar outro conteúdo →</a></div>
-</div></body></html>"""
+<div class="b"><h4>Alegação</h4><h1 class="q">“{e(r['alegacao'])}”</h1><p>{e(r['explicacao'])}</p>
+{('<h4>Por que</h4><ul class="m">' + motivos + '</ul>') if motivos and r.get("motor") != "regras" else ''}
+{img}
+{'<h4>Fontes</h4><ul>' + fontes + '</ul>' if fontes else ''}
+<p class="av">Verificação automática feita em {data_br}. Confira sempre as fontes citadas.</p></div>
+<div class="f"><span>Antifake · consulta pública e gratuita</span><a href="/#v={aid}">Ver detalhes / verificar outro →</a></div>
+</main></body></html>"""
 
 
 @app.exception_handler(HTTPException)
