@@ -179,7 +179,9 @@ def relevance(claim_kws: list, text: str) -> float:
         return 0.0
     tstems = {stem(w) for w in re.findall(r"[\wÀ-ÿ%$]+", text or "")}
     # palavras mais características (início da lista ordenada) pesam mais
-    pesos = [1.6 if i < 2 else 1.0 for i in range(len(claim_kws))]
+    # números (valores, %, datas) variam entre versões do mesmo boato: pesam menos
+    palavras = [k for k in claim_kws if not any(ch.isdigit() for ch in k)]
+    pesos = [0.6 if any(ch.isdigit() for ch in k) else (1.6 if k in palavras[:2] else 1.0) for k in claim_kws]
     hit = sum(p for k, p in zip(claim_kws, pesos) if stem(k) in tstems)
     return min(1.0, hit / sum(pesos))
 
@@ -575,6 +577,20 @@ async def buscar_bing(client, q: str) -> list:
              "origem": "Bing"} for e in d.entries[:10]]
 
 
+async def buscar_wikipedia(client, q: str) -> list:
+    try:
+        r = await client.get("https://pt.wikipedia.org/w/api.php",
+                             params={"action": "query", "list": "search", "srsearch": q, "format": "json",
+                                     "srlimit": 5, "utf8": 1})
+        hits = r.json().get("query", {}).get("search", [])
+    except Exception:
+        return []
+    return [{"titulo": h["title"] + " — Wikipédia",
+             "url": "https://pt.wikipedia.org/wiki/" + quote(h["title"].replace(" ", "_")),
+             "trecho": html.unescape(re.sub("<.*?>", "", h.get("snippet", ""))), "veiculo": "Wikipédia",
+             "dominio": "pt.wikipedia.org", "data": "", "origem": "Wikipédia"} for h in hits]
+
+
 async def buscar_factcheck_api(client, q: str) -> list:
     if not GOOGLE_FACTCHECK_KEY:
         return []
@@ -661,10 +677,10 @@ async def _coletar(alegacao: str) -> dict:
             buscar_gnews(c, q, True), buscar_ddg(c, q + " checagem fato ou fake"),
             buscar_gnews(c, q_curta, True), buscar_ddg(c, q_curta + " é falso"),
             buscar_ddg(c, q), buscar_gnews(c, q, False), buscar_factcheck_api(c, alegacao),
+            buscar_gnews(c, q_curta, False), buscar_bing(c, q), buscar_bing(c, q_curta + " checagem"),
+            buscar_wikipedia(c, q_curta),
             return_exceptions=True)
         res = [r if isinstance(r, list) else [] for r in res]
-        if not res[1] and not res[3] and not res[4]:
-            res.append(await buscar_bing(c, q))
     todos, vistos = [], set()
     for lst in res:
         for it in lst:
